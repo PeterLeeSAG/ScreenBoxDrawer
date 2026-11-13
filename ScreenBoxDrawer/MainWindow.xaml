@@ -1,0 +1,21 @@
+﻿<Window x:Class="ScreenBoxDrawer.MainWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ScreenBoxDrawer" Height="300" Width="400"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Visibility="Hidden"
+        Loaded="Window_Loaded">
+    <Canvas x:Name="RootCanvas" Background="Transparent">
+        <!-- Add RadiusX/RadiusY for rounded corners and set Fill transparent by default -->
+        <Rectangle x:Name="SelectionRect"
+                Stroke="Red"
+                StrokeThickness="3"
+                Fill="Transparent"
+                Visibility="Collapsed"
+                RadiusX="8" RadiusY="8"/>
+    </Canvas>
+</Window>
