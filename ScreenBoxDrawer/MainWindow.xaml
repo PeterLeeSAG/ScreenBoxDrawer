@@ -9,13 +9,5 @@
         Topmost="True"
         Visibility="Hidden"
         Loaded="Window_Loaded">
-    <Canvas x:Name="RootCanvas" Background="Transparent">
-        <!-- Add RadiusX/RadiusY for rounded corners and set Fill transparent by default -->
-        <Rectangle x:Name="SelectionRect"
-                Stroke="Red"
-                StrokeThickness="3"
-                Fill="Transparent"
-                Visibility="Collapsed"
-                RadiusX="8" RadiusY="8"/>
-    </Canvas>
+    <Canvas x:Name="RootCanvas" Background="Transparent"/>
 </Window>

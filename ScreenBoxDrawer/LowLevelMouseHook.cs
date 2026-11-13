@@ -45,6 +45,11 @@ namespace ScreenBoxDrawer
             }
         }
 
+        public void CancelDrawing()
+        {
+            _isDrawing = false;
+        }
+
         private IntPtr SetHook(NativeMethodsLowLevel.LowLevelMouseProc proc)
         {
             using var curProcess = System.Diagnostics.Process.GetCurrentProcess();
@@ -62,29 +67,27 @@ namespace ScreenBoxDrawer
                     int msg = wParam.ToInt32();
                     var ms = Marshal.PtrToStructure<NativeMethodsLowLevel.MSLLHOOKSTRUCT>(lParam);
 
-                    // If we detect Ctrl+Shift+LeftDown, start drawing and swallow that down only
                     if (msg == WM_LBUTTONDOWN)
                     {
                         bool ctrl = (NativeMethodsLowLevel.GetAsyncKeyState(NativeMethodsLowLevel.VK_CONTROL) & 0x8000) != 0;
                         bool shift = (NativeMethodsLowLevel.GetAsyncKeyState(NativeMethodsLowLevel.VK_SHIFT) & 0x8000) != 0;
-                        if (ctrl && shift)
+                        if (_mainWindow.IsDrawArmed || (ctrl && shift))
                         {
-                            _isDrawing = true;
-                            _mainWindow.BeginDraw(new System.Drawing.Point(ms.pt.x, ms.pt.y));
-                            // swallow ONLY the initial mouse down so the underlying app doesn't start selection
-                            return (IntPtr)1;
+                            _isDrawing = _mainWindow.BeginDraw(new System.Drawing.Point(ms.pt.x, ms.pt.y));
+                            if (_isDrawing)
+                            {
+                                // Swallow only the initial down so the underlying app does not start a selection.
+                                return (IntPtr)1;
+                            }
                         }
                     }
 
-                    // While drawing, observe moves and button-up but DO NOT swallow them (return CallNextHookEx).
-                    // We still forward to the UI so the overlay updates in real-time.
                     if (msg == WM_MOUSEMOVE)
                     {
                         if (_isDrawing)
                         {
                             _mainWindow.UpdateMouse(new System.Drawing.Point(ms.pt.x, ms.pt.y));
                         }
-                        // Let the system handle the move; do not swallow
                         return NativeMethodsLowLevel.CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
                     else if (msg == WM_LBUTTONUP)
@@ -94,7 +97,6 @@ namespace ScreenBoxDrawer
                             _isDrawing = false;
                             _mainWindow.EndDraw();
                         }
-                        // Don't swallow the up — let the system handle it
                         return NativeMethodsLowLevel.CallNextHookEx(_hookId, nCode, wParam, lParam);
                     }
                 }

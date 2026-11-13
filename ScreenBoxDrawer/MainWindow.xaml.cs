@@ -1,18 +1,18 @@
-﻿// add to the top of the file with other using directives if not already present
+using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
+using MediaColor = System.Windows.Media.Color;
+using WpfRectangle = System.Windows.Shapes.Rectangle;
 
 namespace ScreenBoxDrawer
 {
     public partial class MainWindow : Window
     {
-        // Put these inside the MainWindow class (or in your NativeMethods class)
         private const int GWL_EXSTYLE = -20;
         private const int WS_EX_TRANSPARENT = 0x00000020;
         private const int WS_EX_LAYERED = 0x00080000;
@@ -21,35 +21,31 @@ namespace ScreenBoxDrawer
         private const int SWP_NOMOVE = 0x0002;
         private const int SWP_NOZORDER = 0x0004;
         private const int SWP_FRAMECHANGED = 0x0020;
+        private const int WM_HOTKEY = 0x0312;
+        private const int DrawHotkeyId = 1;
+        private const int ClearHotkeyId = 2;
 
-        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
-        private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
-
-        [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
-        private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
-
-        [DllImport("user32.dll", SetLastError = true)]
-        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
-            int X, int Y, int cx, int cy, uint uFlags);
-
-        // Optional: Set/Release capture if you want explicit capture (overlay covers whole screen so not required)
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetCapture(IntPtr hWnd);
-
-        [DllImport("user32.dll")]
-        private static extern bool ReleaseCapture();
-
+        private readonly Random _random;
+        private readonly List<DrawBox> _boxes = new();
+        private AppSettings _settings;
+        private HwndSource? _windowSource;
+        private IntPtr _windowHandle;
         private System.Windows.Point _start;
-        private bool _isDrawing = false;
-        private readonly Random _rnd;
-        private Storyboard? _dashStoryboard;
-        private int _sessionId = 0;
+        private DrawBox? _activeBox;
+        private bool _isDrawing;
+        private bool _drawArmed;
+        private bool _hotkeysRegistered;
 
-        public MainWindow()
+        public event EventHandler? ClearRequested;
+
+        public MainWindow(AppSettings settings)
         {
             InitializeComponent();
-            _rnd = Config.CreateRandom();
+            _settings = settings.Clone();
+            _random = Config.CreateRandom();
         }
+
+        public bool IsDrawArmed => _drawArmed;
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
@@ -58,309 +54,460 @@ namespace ScreenBoxDrawer
             Width = SystemParameters.VirtualScreenWidth;
             Height = SystemParameters.VirtualScreenHeight;
 
-            var hwnd = new WindowInteropHelper(this).EnsureHandle();
-            var ex = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            ex |= NativeMethods.WS_EX_TOOLWINDOW;
-            NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, ex);
+            _windowHandle = new WindowInteropHelper(this).EnsureHandle();
+            var extendedStyle = NativeMethods.GetWindowLong(_windowHandle, GWL_EXSTYLE);
+            extendedStyle |= NativeMethods.WS_EX_TOOLWINDOW;
+            NativeMethods.SetWindowLong(_windowHandle, GWL_EXSTYLE, extendedStyle);
+            MakeWindowClickThrough();
 
-            MakeWindowClickThrough(hwnd);
-        }
+            _windowSource = HwndSource.FromHwnd(_windowHandle)
+                ?? throw new InvalidOperationException("The overlay window message source could not be created.");
+            _windowSource.AddHook(WindowProc);
 
-        private void MakeWindowClickThrough(IntPtr hwnd)
-        {
-            var ex = NativeMethods.GetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE);
-            ex |= NativeMethods.WS_EX_TRANSPARENT | NativeMethods.WS_EX_LAYERED | NativeMethods.WS_EX_NOACTIVATE;
-            NativeMethods.SetWindowLong(hwnd, NativeMethods.GWL_EXSTYLE, ex);
-        }
-        // Helper: convert screen pixel point (mouse hook) -> WPF point in window coordinates (DIPs)
-        private System.Windows.Point ConvertScreenPixelsToWindowDips(System.Drawing.Point screenPixelPoint)
-        {
-            // screenPixel (pixels) -> WPF device independent units (DIPs)
-            var devicePoint = new System.Windows.Point(screenPixelPoint.X, screenPixelPoint.Y);
-
-            // If we have a PresentationSource, use its TransformFromDevice
-            var source = PresentationSource.FromVisual(this);
-            System.Windows.Point dipAbsolute;
-            if (source != null)
+            if (!TryApplySettings(_settings, out var error))
             {
-                var transform = source.CompositionTarget.TransformFromDevice;
-                dipAbsolute = transform.Transform(devicePoint);
+                System.Windows.MessageBox.Show(
+                    $"A global shortcut could not be registered. {error}\n\n" +
+                    "The existing Ctrl+Shift+drag gesture is still available.",
+                    "ScreenBoxDrawer",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
             }
-            else
+        }
+
+        public bool TryApplySettings(AppSettings settings, out string error)
+        {
+            if (!Dispatcher.CheckAccess())
             {
-                // fallback: use VisualTreeHelper.GetDpi to get scale factor
-                var dpi = VisualTreeHelper.GetDpi(this);
-                dipAbsolute = new System.Windows.Point(devicePoint.X / dpi.DpiScaleX, devicePoint.Y / dpi.DpiScaleY);
+                var result = Dispatcher.Invoke(() => TryApplySettings(settings, out var innerError)
+                    ? (Success: true, Error: string.Empty)
+                    : (Success: false, Error: innerError));
+                error = result.Error;
+                return result.Success;
             }
 
-            // Convert absolute DIPs (relative to virtual screen origin) to coordinates relative to this window
-            // Window.Left/Top are in DIPs, so subtract them.
-            var relative = new System.Windows.Point(dipAbsolute.X - this.Left, dipAbsolute.Y - this.Top);
-            return relative;
+            var validationError = settings.Validate();
+            if (validationError != null)
+            {
+                error = validationError;
+                return false;
+            }
+
+            if (!TryRegisterHotkeys(settings, out error))
+                return false;
+
+            _settings = settings.Clone();
+            Config.MaximumVisibleBoxes = _settings.MaximumVisibleBoxes;
+            Config.BoxDisplaySeconds = _settings.BoxDisplaySeconds;
+            Config.EffectsEnabled = _settings.EffectsEnabled;
+
+            while (_boxes.Count > Config.MaximumVisibleBoxes)
+                RemoveBox(_boxes[0]);
+
+            error = string.Empty;
+            return true;
         }
 
-        public void BeginDraw(System.Drawing.Point startScreen)
+        public void ArmDraw()
         {
-            Dispatcher.Invoke(() =>
+            if (!Dispatcher.CheckAccess())
             {
-                // disable click-through so overlay will receive mouse if needed
-                ToggleOverlayClickThrough(false);
+                Dispatcher.Invoke(ArmDraw);
+                return;
+            }
 
-                // capture the mouse to this overlay so it receives mouse messages reliably
-                var hwnd = new WindowInteropHelper(this).EnsureHandle();
-                SetCapture(hwnd);
+            if (!_isDrawing)
+                _drawArmed = true;
+        }
 
-                _sessionId++;
+        public void ClearBoxes()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(ClearBoxes);
+                return;
+            }
 
-                // Cancel any ongoing fade and reset opacity
-                SelectionRect.BeginAnimation(OpacityProperty, null);
-                SelectionRect.Opacity = 1.0;
+            ClearRequested?.Invoke(this, EventArgs.Empty);
+            _drawArmed = false;
+            _isDrawing = false;
+            _activeBox = null;
 
-                // Stop previous dash animation
-                _dashStoryboard?.Stop(this);
-                _dashStoryboard = null;
-                SelectionRect.StrokeDashArray = null;
-                SelectionRect.StrokeDashOffset = 0;
+            foreach (var box in _boxes.ToArray())
+                RemoveBox(box);
 
-                // Apply corner radius from config
-                SelectionRect.RadiusX = Config.CornerRadius;
-                SelectionRect.RadiusY = Config.CornerRadius;
+            NativeMethods.ReleaseCapture();
+            ToggleOverlayClickThrough(true);
+            Visibility = Visibility.Hidden;
+        }
 
-                // Convert the incoming pixel coords -> DIPs relative to the overlay window
-                _start = ConvertScreenPixelsToWindowDips(startScreen);
+        public bool BeginDraw(System.Drawing.Point startScreen)
+        {
+            return Dispatcher.Invoke(() => BeginDrawCore(startScreen));
+        }
 
-                // Choose color and stroke thickness as before
-                var color = RandomColor();
-                var brush = new SolidColorBrush(color);
-                SelectionRect.Stroke = brush;
+        private bool BeginDrawCore(System.Drawing.Point startScreen)
+        {
+            if (_isDrawing)
+                return false;
 
-                if (Config.UseFill)
-                {
-                    var fillColor = Color.FromArgb(60, color.R, color.G, color.B);
-                    SelectionRect.Fill = new SolidColorBrush(fillColor);
-                }
-                else
-                {
-                    SelectionRect.Fill = Brushes.Transparent;
-                }
+            while (_boxes.Count >= Config.MaximumVisibleBoxes)
+                RemoveBox(_boxes[0]);
 
-                double thickness = Config.StrokeThickness;
-                if (Config.AllowRandomThickness)
-                    thickness = _rnd.NextDouble() * (Config.MaxThickness - Config.MinThickness) + Config.MinThickness;
+            ToggleOverlayClickThrough(false);
+            NativeMethods.SetCapture(_windowHandle);
+            _drawArmed = false;
+            _start = ConvertScreenPixelsToWindowDips(startScreen);
 
-                SelectionRect.StrokeThickness = thickness;
+            var color = RandomColor();
+            var rectangle = new WpfRectangle
+            {
+                Stroke = new SolidColorBrush(color),
+                Fill = Config.UseFill
+                    ? new SolidColorBrush(MediaColor.FromArgb(60, color.R, color.G, color.B))
+                    : System.Windows.Media.Brushes.Transparent,
+                RadiusX = Config.CornerRadius,
+                RadiusY = Config.CornerRadius,
+                Visibility = Visibility.Visible
+            };
 
-                // choose effect
-                EffectMode chosen;
-                if (Config.SelectedEffect != EffectMode.Random)
-                {
-                    chosen = Config.SelectedEffect;
-                }
-                else
-                {
-                    double wS = Math.Max(0.0, Config.WeightSolid);
-                    double wDs = Math.Max(0.0, Config.WeightDashedStatic);
-                    double wDm = Math.Max(0.0, Config.WeightDashedMoving);
-                    double total = wS + wDs + wDm;
-                    if (total <= 0.0) chosen = EffectMode.Solid;
-                    else
-                    {
-                        double r = _rnd.NextDouble() * total;
-                        if (r < wS) chosen = EffectMode.Solid;
-                        else if (r < wS + wDs) chosen = EffectMode.DashedStatic;
-                        else chosen = EffectMode.DashedMoving;
-                    }
-                }
+            double thickness = Config.StrokeThickness;
+            if (Config.AllowRandomThickness)
+                thickness = _random.NextDouble() * (Config.MaxThickness - Config.MinThickness) + Config.MinThickness;
+            rectangle.StrokeThickness = thickness;
 
-                ApplyEffect((int)chosen, thickness);
+            var box = new DrawBox(rectangle);
+            RootCanvas.Children.Add(rectangle);
+            _boxes.Add(box);
+            _activeBox = box;
+            _isDrawing = true;
 
-                SelectionRect.Visibility = Visibility.Visible;
-                UpdateRect(_start, _start);
-                _isDrawing = true;
-                if (Visibility != Visibility.Visible)
-                    Visibility = Visibility.Visible;
-
-                // DO NOT re-enable click-through here — it must remain disabled until the draw finishes.
-            });
+            ApplyEffect(box, Config.EffectsEnabled ? ChooseEffect() : EffectMode.Solid, thickness);
+            UpdateRect(box, _start, _start);
+            Visibility = Visibility.Visible;
+            return true;
         }
 
         public void EndDraw()
         {
-            Dispatcher.Invoke(() =>
+            if (!Dispatcher.CheckAccess())
             {
-                if (!_isDrawing) return;
-                _isDrawing = false;
+                Dispatcher.Invoke(EndDraw);
+                return;
+            }
 
-                int sessionAtFadeStart = _sessionId;
+            if (!_isDrawing || _activeBox == null)
+                return;
 
+            var box = _activeBox;
+            _activeBox = null;
+            _isDrawing = false;
+
+            double displaySeconds = Config.BoxDisplaySeconds;
+            if (displaySeconds > 0)
+            {
+                double fadeSeconds = Math.Min(Math.Max(0.05, Config.FadeSeconds), displaySeconds);
                 var fade = new DoubleAnimation
                 {
                     From = 1.0,
                     To = 0.0,
-                    Duration = TimeSpan.FromSeconds(Math.Max(0.05, Config.FadeSeconds)),
+                    BeginTime = TimeSpan.FromSeconds(displaySeconds - fadeSeconds),
+                    Duration = TimeSpan.FromSeconds(fadeSeconds),
                     FillBehavior = FillBehavior.Stop
                 };
-
-                fade.Completed += (s, e) =>
-                {
-                    if (sessionAtFadeStart != _sessionId)
-                        return;
-
-                    SelectionRect.Visibility = Visibility.Collapsed;
-                    SelectionRect.Opacity = 1.0;
-                    SelectionRect.StrokeDashArray = null;
-                    SelectionRect.StrokeDashOffset = 0;
-                    _dashStoryboard?.Stop(this);
-                    _dashStoryboard = null;
-                    Visibility = Visibility.Hidden;
-
-                    // release capture and re-enable click-through now that fade finished
-                    try
-                    {
-                        var hwnd = new WindowInteropHelper(this).EnsureHandle();
-                        ReleaseCapture();
-                    }
-                    catch { }
-
-                    // re-enable click-through now that the selection/fade finished
-                    ToggleOverlayClickThrough(true);
-                };
-
-                SelectionRect.BeginAnimation(OpacityProperty, fade);
-            });
-        }
-
-        private void ToggleOverlayClickThrough(bool enableClickThrough)
-        {
-            var hwnd = new WindowInteropHelper(this).EnsureHandle();
-            int ex = GetWindowLong(hwnd, GWL_EXSTYLE);
-
-            if (enableClickThrough)
-            {
-                // add transparent so clicks go through
-                ex |= WS_EX_TRANSPARENT;
-                ex |= WS_EX_LAYERED; // keep layered (if you used it)
-                ex |= WS_EX_NOACTIVATE;
-            }
-            else
-            {
-                // remove transparent to receive mouse
-                ex &= ~WS_EX_TRANSPARENT;
-                ex |= WS_EX_LAYERED; // keep layered
-                ex |= WS_EX_NOACTIVATE;
+                fade.Completed += (_, _) => RemoveBox(box);
+                box.Rectangle.BeginAnimation(OpacityProperty, fade);
             }
 
-            SetWindowLong(hwnd, GWL_EXSTYLE, ex);
-
-            // force Windows to re-evaluate the styles immediately
-            SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+            NativeMethods.ReleaseCapture();
+            ToggleOverlayClickThrough(true);
         }
 
         public void UpdateMouse(System.Drawing.Point currentScreen)
         {
-            if (!_isDrawing) return;
-            Dispatcher.Invoke(() =>
+            if (!Dispatcher.CheckAccess())
             {
-                var cur = ConvertScreenPixelsToWindowDips(currentScreen);
-                UpdateRect(_start, cur);
-            });
+                Dispatcher.Invoke(() => UpdateMouse(currentScreen));
+                return;
+            }
+
+            if (!_isDrawing || _activeBox == null)
+                return;
+
+            var current = ConvertScreenPixelsToWindowDips(currentScreen);
+            UpdateRect(_activeBox, _start, current);
         }
 
-        private void ApplyEffect(int effect, double thickness)
+        private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            _dashStoryboard?.Stop(this);
-            _dashStoryboard = null;
-            SelectionRect.StrokeDashArray = null;
-            SelectionRect.StrokeDashOffset = 0;
-
-            // compute dash length/gap (use config values if positive, else based on thickness)
-            double dashLen = Config.DashLength > 0 ? Config.DashLength : Math.Max(2, thickness * 4);
-            double dashGap = Config.DashGap > 0 ? Config.DashGap : dashLen;
-
-            if (effect == (int)EffectMode.Solid)
+            if (message == WM_HOTKEY)
             {
-                SelectionRect.StrokeDashArray = null;
+                if (wParam.ToInt32() == DrawHotkeyId)
+                    ArmDraw();
+                else if (wParam.ToInt32() == ClearHotkeyId)
+                    ClearBoxes();
+
+                handled = true;
             }
-            else if (effect == (int)EffectMode.DashedStatic)
-            {
-                SelectionRect.StrokeDashArray = new DoubleCollection() { dashLen, dashGap };
-            }
-            else // moving dashed
-            {
-                SelectionRect.StrokeDashArray = new DoubleCollection() { dashLen, dashGap };
 
-                // animate dash offset to create moving effect
-                var anim = new DoubleAnimation
+            return IntPtr.Zero;
+        }
+
+        private bool TryRegisterHotkeys(AppSettings settings, out string error)
+        {
+            var previousSettings = _settings.Clone();
+            var restorePrevious = _hotkeysRegistered;
+
+            if (restorePrevious)
+            {
+                NativeMethods.UnregisterHotKey(_windowHandle, DrawHotkeyId);
+                NativeMethods.UnregisterHotKey(_windowHandle, ClearHotkeyId);
+                _hotkeysRegistered = false;
+            }
+
+            if (RegisterHotkey(DrawHotkeyId, settings.DrawHotkey, out error))
+            {
+                if (RegisterHotkey(ClearHotkeyId, settings.ClearHotkey, out error))
                 {
-                    From = 0,
-                    To = dashLen + dashGap,
-                    Duration = TimeSpan.FromSeconds(Math.Max(0.05, Config.MovingDashSeconds)),
-                    RepeatBehavior = RepeatBehavior.Forever
-                };
+                    _hotkeysRegistered = true;
+                    return true;
+                }
 
-                _dashStoryboard = new Storyboard();
-                Storyboard.SetTarget(anim, SelectionRect);
-                Storyboard.SetTargetProperty(anim, new PropertyPath(Shape.StrokeDashOffsetProperty));
-                _dashStoryboard.Children.Add(anim);
-                _dashStoryboard.Begin(this, true);
+                NativeMethods.UnregisterHotKey(_windowHandle, DrawHotkeyId);
             }
-        }
 
-        private void UpdateRect(System.Windows.Point a, System.Windows.Point b)
-        {
-            double left = Math.Min(a.X, b.X);
-            double top = Math.Min(a.Y, b.Y);
-            double w = Math.Abs(a.X - b.X);
-            double h = Math.Abs(a.Y - b.Y);
-
-            Canvas.SetLeft(SelectionRect, left);
-            Canvas.SetTop(SelectionRect, top);
-            SelectionRect.Width = Math.Max(1, w);
-            SelectionRect.Height = Math.Max(1, h);
-        }
-
-        private Color RandomColor()
-        {
-            double h = _rnd.NextDouble() * 360.0;
-            double s = 0.6 + _rnd.NextDouble() * 0.4;
-            double v = 0.7 + _rnd.NextDouble() * 0.3;
-            return ColorFromHSV(h, s, v);
-        }
-
-        private static Color ColorFromHSV(double h, double s, double v)
-        {
-            int hi = Convert.ToInt32(Math.Floor(h / 60)) % 6;
-            double f = h / 60 - Math.Floor(h / 60);
-            v = v * 255;
-            byte vb = Convert.ToByte(Math.Round(v));
-            byte p = Convert.ToByte(Math.Round(v * (1 - s)));
-            byte q = Convert.ToByte(Math.Round(v * (1 - f * s)));
-            byte t = Convert.ToByte(Math.Round(v * (1 - (1 - f) * s)));
-            return hi switch
+            if (restorePrevious)
             {
-                0 => Color.FromRgb(vb, t, p),
-                1 => Color.FromRgb(q, vb, p),
-                2 => Color.FromRgb(p, vb, t),
-                3 => Color.FromRgb(p, q, vb),
-                4 => Color.FromRgb(t, p, vb),
-                _ => Color.FromRgb(vb, p, q),
+                var originalError = error;
+                var restoredDraw = RegisterHotkey(DrawHotkeyId, previousSettings.DrawHotkey, out var restoreError);
+                var restoredClear = restoredDraw &&
+                    RegisterHotkey(ClearHotkeyId, previousSettings.ClearHotkey, out restoreError);
+
+                _hotkeysRegistered = restoredDraw && restoredClear;
+                if (!_hotkeysRegistered)
+                    error = $"{originalError} The previous shortcuts could not be restored: {restoreError}";
+                else
+                    error = originalError;
+            }
+
+            return false;
+        }
+
+        private bool RegisterHotkey(int id, HotkeySettings shortcut, out string error)
+        {
+            if (NativeMethods.RegisterHotKey(_windowHandle, id, shortcut.Modifiers, shortcut.VirtualKey))
+            {
+                error = string.Empty;
+                return true;
+            }
+
+            error = $"Could not register {shortcut.ToDisplayString()}: " +
+                new Win32Exception(Marshal.GetLastWin32Error()).Message;
+            return false;
+        }
+
+        private void MakeWindowClickThrough()
+        {
+            var extendedStyle = NativeMethods.GetWindowLong(_windowHandle, GWL_EXSTYLE);
+            extendedStyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE;
+            NativeMethods.SetWindowLong(_windowHandle, GWL_EXSTYLE, extendedStyle);
+        }
+
+        private void ToggleOverlayClickThrough(bool enableClickThrough)
+        {
+            var extendedStyle = NativeMethods.GetWindowLong(_windowHandle, GWL_EXSTYLE);
+            if (enableClickThrough)
+            {
+                extendedStyle |= WS_EX_TRANSPARENT | WS_EX_LAYERED | WS_EX_NOACTIVATE;
+            }
+            else
+            {
+                extendedStyle &= ~WS_EX_TRANSPARENT;
+                extendedStyle |= WS_EX_LAYERED | WS_EX_NOACTIVATE;
+            }
+
+            NativeMethods.SetWindowLong(_windowHandle, GWL_EXSTYLE, extendedStyle);
+            NativeMethods.SetWindowPos(
+                _windowHandle,
+                IntPtr.Zero,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+
+        private System.Windows.Point ConvertScreenPixelsToWindowDips(System.Drawing.Point screenPixelPoint)
+        {
+            var devicePoint = new System.Windows.Point(screenPixelPoint.X, screenPixelPoint.Y);
+            var source = PresentationSource.FromVisual(this);
+            System.Windows.Point dipAbsolute;
+            if (source != null)
+            {
+                dipAbsolute = source.CompositionTarget.TransformFromDevice.Transform(devicePoint);
+            }
+            else
+            {
+                var dpi = VisualTreeHelper.GetDpi(this);
+                dipAbsolute = new System.Windows.Point(
+                    devicePoint.X / dpi.DpiScaleX,
+                    devicePoint.Y / dpi.DpiScaleY);
+            }
+
+            return new System.Windows.Point(dipAbsolute.X - Left, dipAbsolute.Y - Top);
+        }
+
+        private EffectMode ChooseEffect()
+        {
+            if (Config.SelectedEffect != EffectMode.Random)
+                return Config.SelectedEffect;
+
+            double solidWeight = Math.Max(0.0, Config.WeightSolid);
+            double staticWeight = Math.Max(0.0, Config.WeightDashedStatic);
+            double movingWeight = Math.Max(0.0, Config.WeightDashedMoving);
+            double totalWeight = solidWeight + staticWeight + movingWeight;
+            if (totalWeight <= 0.0)
+                return EffectMode.Solid;
+
+            double choice = _random.NextDouble() * totalWeight;
+            if (choice < solidWeight)
+                return EffectMode.Solid;
+            if (choice < solidWeight + staticWeight)
+                return EffectMode.DashedStatic;
+            return EffectMode.DashedMoving;
+        }
+
+        private void ApplyEffect(DrawBox box, EffectMode effect, double thickness)
+        {
+            var rectangle = box.Rectangle;
+            double dashLength = Config.DashLength > 0
+                ? Config.DashLength
+                : Math.Max(2, thickness * 4);
+            double dashGap = Config.DashGap > 0 ? Config.DashGap : dashLength;
+
+            if (effect == EffectMode.Solid)
+                return;
+
+            rectangle.StrokeDashArray = new DoubleCollection { dashLength, dashGap };
+            if (effect != EffectMode.DashedMoving)
+                return;
+
+            var animation = new DoubleAnimation
+            {
+                From = 0,
+                To = dashLength + dashGap,
+                Duration = TimeSpan.FromSeconds(Math.Max(0.05, Config.MovingDashSeconds)),
+                RepeatBehavior = RepeatBehavior.Forever
             };
+            box.DashStoryboard = new Storyboard();
+            Storyboard.SetTarget(animation, rectangle);
+            Storyboard.SetTargetProperty(animation, new PropertyPath(Shape.StrokeDashOffsetProperty));
+            box.DashStoryboard.Children.Add(animation);
+            box.DashStoryboard.Begin(this, true);
+        }
+
+        private static void UpdateRect(DrawBox box, System.Windows.Point start, System.Windows.Point end)
+        {
+            double left = Math.Min(start.X, end.X);
+            double top = Math.Min(start.Y, end.Y);
+            Canvas.SetLeft(box.Rectangle, left);
+            Canvas.SetTop(box.Rectangle, top);
+            box.Rectangle.Width = Math.Max(1, Math.Abs(start.X - end.X));
+            box.Rectangle.Height = Math.Max(1, Math.Abs(start.Y - end.Y));
+        }
+
+        private void RemoveBox(DrawBox box)
+        {
+            if (!_boxes.Remove(box))
+                return;
+
+            box.DashStoryboard?.Stop(this);
+            box.Rectangle.BeginAnimation(OpacityProperty, null);
+            RootCanvas.Children.Remove(box.Rectangle);
+
+            if (ReferenceEquals(_activeBox, box))
+            {
+                ClearRequested?.Invoke(this, EventArgs.Empty);
+                _activeBox = null;
+                _isDrawing = false;
+                NativeMethods.ReleaseCapture();
+                ToggleOverlayClickThrough(true);
+            }
+
+            if (_boxes.Count == 0 && !_isDrawing)
+                Visibility = Visibility.Hidden;
+        }
+
+        private MediaColor RandomColor()
+        {
+            double hue = _random.NextDouble() * 360.0;
+            double saturation = 0.6 + _random.NextDouble() * 0.4;
+            double value = 0.7 + _random.NextDouble() * 0.3;
+            return ColorFromHSV(hue, saturation, value);
+        }
+
+        private static MediaColor ColorFromHSV(double hue, double saturation, double value)
+        {
+            int sector = Convert.ToInt32(Math.Floor(hue / 60)) % 6;
+            double fraction = hue / 60 - Math.Floor(hue / 60);
+            value *= 255;
+            byte valueByte = Convert.ToByte(Math.Round(value));
+            byte p = Convert.ToByte(Math.Round(value * (1 - saturation)));
+            byte q = Convert.ToByte(Math.Round(value * (1 - fraction * saturation)));
+            byte t = Convert.ToByte(Math.Round(value * (1 - (1 - fraction) * saturation)));
+            return sector switch
+            {
+                0 => MediaColor.FromRgb(valueByte, t, p),
+                1 => MediaColor.FromRgb(q, valueByte, p),
+                2 => MediaColor.FromRgb(p, valueByte, t),
+                3 => MediaColor.FromRgb(p, q, valueByte),
+                4 => MediaColor.FromRgb(t, p, valueByte),
+                _ => MediaColor.FromRgb(valueByte, p, q),
+            };
+        }
+
+        private sealed class DrawBox
+        {
+            public DrawBox(WpfRectangle rectangle)
+            {
+                Rectangle = rectangle;
+            }
+
+            public WpfRectangle Rectangle { get; }
+            public Storyboard? DashStoryboard { get; set; }
         }
     }
 
     internal static class NativeMethods
     {
-        public const int GWL_EXSTYLE = -20;
-        public const int WS_EX_TRANSPARENT = 0x00000020;
-        public const int WS_EX_LAYERED = 0x00080000;
         public const int WS_EX_TOOLWINDOW = 0x00000080;
-        public const int WS_EX_NOACTIVATE = 0x08000000;
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowLong")]
-        public static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+        [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
+        public static extern int GetWindowLong(IntPtr hWnd, int index);
 
-        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "SetWindowLong")]
-        public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll", EntryPoint = "SetWindowLong")]
+        public static extern int SetWindowLong(IntPtr hWnd, int index, int newLong);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(
+            IntPtr hWnd,
+            IntPtr hWndInsertAfter,
+            int x,
+            int y,
+            int cx,
+            int cy,
+            uint flags);
+
+        [DllImport("user32.dll")]
+        public static extern IntPtr SetCapture(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool ReleaseCapture();
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint modifiers, uint virtualKey);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
     }
 }

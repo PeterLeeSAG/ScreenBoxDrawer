@@ -20,6 +20,7 @@ namespace ScreenBoxDrawer
 
         // Fade duration in seconds
         public static double FadeSeconds { get; set; } = 1.5;
+        public static double BoxDisplaySeconds { get; set; } = 1.5;
 
         // Fill (transparent when false)
         public static bool UseFill { get; set; } = false;
@@ -31,6 +32,8 @@ namespace ScreenBoxDrawer
         // - Set SelectedEffect to Random to keep random behavior,
         //   or to Solid/DashedStatic/DashedMoving to force one.
         public static EffectMode SelectedEffect { get; set; } = EffectMode.Solid;
+        public static bool EffectsEnabled { get; set; } = true;
+        public static int MaximumVisibleBoxes { get; set; } = 10;
 
         // If SelectedEffect == Random, control probabilities by weight:
         // (weights relative to each other; set zero to disable a type)
