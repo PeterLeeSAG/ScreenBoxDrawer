@@ -13,6 +13,13 @@ namespace ScreenBoxDrawer
             Key = "D"
         };
 
+        public HotkeySettings ArrowHotkey { get; set; } = new()
+        {
+            Control = true,
+            Shift = true,
+            Key = "A"
+        };
+
         public HotkeySettings ClearHotkey { get; set; } = new()
         {
             Control = true,
@@ -29,6 +36,7 @@ namespace ScreenBoxDrawer
             return new AppSettings
             {
                 DrawHotkey = DrawHotkey.Clone(),
+                ArrowHotkey = ArrowHotkey.Clone(),
                 ClearHotkey = ClearHotkey.Clone(),
                 MaximumVisibleBoxes = MaximumVisibleBoxes,
                 BoxDisplaySeconds = BoxDisplaySeconds,
@@ -48,17 +56,24 @@ namespace ScreenBoxDrawer
                 return "Box display duration must be zero or a finite nonnegative number of seconds.";
             }
 
-            if (DrawHotkey == null || ClearHotkey == null)
-                return "Both draw and clear shortcuts must be configured.";
+            if (DrawHotkey == null || ArrowHotkey == null || ClearHotkey == null)
+                return "Draw, arrow, and clear shortcuts must all be configured.";
 
             if (!DrawHotkey.IsValid)
-                return "The draw shortcut must include a key and at least one modifier.";
+                return "The box shortcut must include a key and at least one modifier.";
+
+            if (!ArrowHotkey.IsValid)
+                return "The arrow shortcut must include a key and at least one modifier.";
 
             if (!ClearHotkey.IsValid)
                 return "The clear shortcut must include a key and at least one modifier.";
 
-            if (DrawHotkey.Matches(ClearHotkey))
-                return "The draw and clear shortcuts must be different.";
+            if (DrawHotkey.Matches(ArrowHotkey) ||
+                DrawHotkey.Matches(ClearHotkey) ||
+                ArrowHotkey.Matches(ClearHotkey))
+            {
+                return "The box, arrow, and clear shortcuts must be different.";
+            }
 
             return null;
         }

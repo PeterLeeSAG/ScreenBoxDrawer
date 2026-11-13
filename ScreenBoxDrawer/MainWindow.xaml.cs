@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using MediaColor = System.Windows.Media.Color;
+using WpfPath = System.Windows.Shapes.Path;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
 
 namespace ScreenBoxDrawer
@@ -23,7 +24,8 @@ namespace ScreenBoxDrawer
         private const int SWP_FRAMECHANGED = 0x0020;
         private const int WM_HOTKEY = 0x0312;
         private const int DrawHotkeyId = 1;
-        private const int ClearHotkeyId = 2;
+        private const int ArrowHotkeyId = 2;
+        private const int ClearHotkeyId = 3;
 
         private readonly Random _random;
         private readonly List<DrawBox> _boxes = new();
@@ -33,7 +35,7 @@ namespace ScreenBoxDrawer
         private System.Windows.Point _start;
         private DrawBox? _activeBox;
         private bool _isDrawing;
-        private bool _drawArmed;
+        private DrawingTool _armedTool;
         private bool _hotkeysRegistered;
 
         public event EventHandler? ClearRequested;
@@ -45,7 +47,7 @@ namespace ScreenBoxDrawer
             _random = Config.CreateRandom();
         }
 
-        public bool IsDrawArmed => _drawArmed;
+        public bool IsDrawingArmed => _armedTool != DrawingTool.None;
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
@@ -73,6 +75,8 @@ namespace ScreenBoxDrawer
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Warning);
             }
+
+            Hide();
         }
 
         public bool TryApplySettings(AppSettings settings, out string error)
@@ -117,7 +121,19 @@ namespace ScreenBoxDrawer
             }
 
             if (!_isDrawing)
-                _drawArmed = true;
+                _armedTool = DrawingTool.Box;
+        }
+
+        public void ArmArrow()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(ArmArrow);
+                return;
+            }
+
+            if (!_isDrawing)
+                _armedTool = DrawingTool.Arrow;
         }
 
         public void ClearBoxes()
@@ -129,7 +145,7 @@ namespace ScreenBoxDrawer
             }
 
             ClearRequested?.Invoke(this, EventArgs.Empty);
-            _drawArmed = false;
+            _armedTool = DrawingTool.None;
             _isDrawing = false;
             _activeBox = null;
 
@@ -138,7 +154,7 @@ namespace ScreenBoxDrawer
 
             NativeMethods.ReleaseCapture();
             ToggleOverlayClickThrough(true);
-            Visibility = Visibility.Hidden;
+            Hide();
         }
 
         public bool BeginDraw(System.Drawing.Point startScreen)
@@ -151,39 +167,44 @@ namespace ScreenBoxDrawer
             if (_isDrawing)
                 return false;
 
+            var tool = _armedTool == DrawingTool.None ? DrawingTool.Box : _armedTool;
             while (_boxes.Count >= Config.MaximumVisibleBoxes)
                 RemoveBox(_boxes[0]);
 
             ToggleOverlayClickThrough(false);
             NativeMethods.SetCapture(_windowHandle);
-            _drawArmed = false;
+            _armedTool = DrawingTool.None;
             _start = ConvertScreenPixelsToWindowDips(startScreen);
 
             var color = RandomColor();
-            var rectangle = new WpfRectangle
-            {
-                Stroke = new SolidColorBrush(color),
-                Fill = Config.UseFill
-                    ? new SolidColorBrush(MediaColor.FromArgb(60, color.R, color.G, color.B))
-                    : System.Windows.Media.Brushes.Transparent,
-                RadiusX = Config.CornerRadius,
-                RadiusY = Config.CornerRadius,
-                Visibility = Visibility.Visible
-            };
+            Shape shape = tool == DrawingTool.Box
+                ? new WpfRectangle
+                {
+                    RadiusX = Config.CornerRadius,
+                    RadiusY = Config.CornerRadius
+                }
+                : new WpfPath { Stretch = Stretch.None };
+            shape.Stroke = new SolidColorBrush(color);
+            shape.Fill = Config.UseFill
+                ? new SolidColorBrush(MediaColor.FromArgb(60, color.R, color.G, color.B))
+                : System.Windows.Media.Brushes.Transparent;
+            shape.Visibility = Visibility.Visible;
 
             double thickness = Config.StrokeThickness;
             if (Config.AllowRandomThickness)
                 thickness = _random.NextDouble() * (Config.MaxThickness - Config.MinThickness) + Config.MinThickness;
-            rectangle.StrokeThickness = thickness;
+            shape.StrokeThickness = thickness;
 
-            var box = new DrawBox(rectangle);
-            RootCanvas.Children.Add(rectangle);
+            var box = new DrawBox(shape, tool);
+            RootCanvas.Children.Add(shape);
             _boxes.Add(box);
             _activeBox = box;
             _isDrawing = true;
 
             ApplyEffect(box, Config.EffectsEnabled ? ChooseEffect() : EffectMode.Solid, thickness);
-            UpdateRect(box, _start, _start);
+            UpdateDrawing(box, _start, _start);
+            if (!IsVisible)
+                Show();
             Visibility = Visibility.Visible;
             return true;
         }
@@ -216,7 +237,7 @@ namespace ScreenBoxDrawer
                     FillBehavior = FillBehavior.Stop
                 };
                 fade.Completed += (_, _) => RemoveBox(box);
-                box.Rectangle.BeginAnimation(OpacityProperty, fade);
+                box.Shape.BeginAnimation(OpacityProperty, fade);
             }
 
             NativeMethods.ReleaseCapture();
@@ -235,7 +256,7 @@ namespace ScreenBoxDrawer
                 return;
 
             var current = ConvertScreenPixelsToWindowDips(currentScreen);
-            UpdateRect(_activeBox, _start, current);
+            UpdateDrawing(_activeBox, _start, current);
         }
 
         private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -244,6 +265,8 @@ namespace ScreenBoxDrawer
             {
                 if (wParam.ToInt32() == DrawHotkeyId)
                     ArmDraw();
+                else if (wParam.ToInt32() == ArrowHotkeyId)
+                    ArmArrow();
                 else if (wParam.ToInt32() == ClearHotkeyId)
                     ClearBoxes();
 
@@ -259,38 +282,54 @@ namespace ScreenBoxDrawer
             var restorePrevious = _hotkeysRegistered;
 
             if (restorePrevious)
-            {
-                NativeMethods.UnregisterHotKey(_windowHandle, DrawHotkeyId);
-                NativeMethods.UnregisterHotKey(_windowHandle, ClearHotkeyId);
-                _hotkeysRegistered = false;
-            }
+                UnregisterHotkeys();
 
-            if (RegisterHotkey(DrawHotkeyId, settings.DrawHotkey, out error))
+            if (RegisterHotkeySet(settings, out error))
             {
-                if (RegisterHotkey(ClearHotkeyId, settings.ClearHotkey, out error))
-                {
-                    _hotkeysRegistered = true;
-                    return true;
-                }
-
-                NativeMethods.UnregisterHotKey(_windowHandle, DrawHotkeyId);
+                _hotkeysRegistered = true;
+                return true;
             }
 
             if (restorePrevious)
             {
                 var originalError = error;
-                var restoredDraw = RegisterHotkey(DrawHotkeyId, previousSettings.DrawHotkey, out var restoreError);
-                var restoredClear = restoredDraw &&
-                    RegisterHotkey(ClearHotkeyId, previousSettings.ClearHotkey, out restoreError);
-
-                _hotkeysRegistered = restoredDraw && restoredClear;
-                if (!_hotkeysRegistered)
-                    error = $"{originalError} The previous shortcuts could not be restored: {restoreError}";
-                else
+                if (RegisterHotkeySet(previousSettings, out var restoreError))
+                {
+                    _hotkeysRegistered = true;
                     error = originalError;
+                }
+                else
+                {
+                    _hotkeysRegistered = false;
+                    error = $"{originalError} The previous shortcuts could not be restored: {restoreError}";
+                }
             }
 
             return false;
+        }
+
+        private bool RegisterHotkeySet(AppSettings settings, out string error)
+        {
+            if (RegisterHotkey(DrawHotkeyId, settings.DrawHotkey, out error) &&
+                RegisterHotkey(ArrowHotkeyId, settings.ArrowHotkey, out error) &&
+                RegisterHotkey(ClearHotkeyId, settings.ClearHotkey, out error))
+            {
+                error = string.Empty;
+                return true;
+            }
+
+            UnregisterHotkeys();
+            return false;
+        }
+
+        private void UnregisterHotkeys()
+        {
+            if (_windowHandle == IntPtr.Zero)
+                return;
+
+            NativeMethods.UnregisterHotKey(_windowHandle, DrawHotkeyId);
+            NativeMethods.UnregisterHotKey(_windowHandle, ArrowHotkeyId);
+            NativeMethods.UnregisterHotKey(_windowHandle, ClearHotkeyId);
         }
 
         private bool RegisterHotkey(int id, HotkeySettings shortcut, out string error)
@@ -379,7 +418,7 @@ namespace ScreenBoxDrawer
 
         private void ApplyEffect(DrawBox box, EffectMode effect, double thickness)
         {
-            var rectangle = box.Rectangle;
+            var shape = box.Shape;
             double dashLength = Config.DashLength > 0
                 ? Config.DashLength
                 : Math.Max(2, thickness * 4);
@@ -388,7 +427,7 @@ namespace ScreenBoxDrawer
             if (effect == EffectMode.Solid)
                 return;
 
-            rectangle.StrokeDashArray = new DoubleCollection { dashLength, dashGap };
+            shape.StrokeDashArray = new DoubleCollection { dashLength, dashGap };
             if (effect != EffectMode.DashedMoving)
                 return;
 
@@ -400,20 +439,84 @@ namespace ScreenBoxDrawer
                 RepeatBehavior = RepeatBehavior.Forever
             };
             box.DashStoryboard = new Storyboard();
-            Storyboard.SetTarget(animation, rectangle);
+            Storyboard.SetTarget(animation, shape);
             Storyboard.SetTargetProperty(animation, new PropertyPath(Shape.StrokeDashOffsetProperty));
             box.DashStoryboard.Children.Add(animation);
             box.DashStoryboard.Begin(this, true);
         }
 
-        private static void UpdateRect(DrawBox box, System.Windows.Point start, System.Windows.Point end)
+        private static void UpdateDrawing(DrawBox box, System.Windows.Point start, System.Windows.Point end)
         {
-            double left = Math.Min(start.X, end.X);
-            double top = Math.Min(start.Y, end.Y);
-            Canvas.SetLeft(box.Rectangle, left);
-            Canvas.SetTop(box.Rectangle, top);
-            box.Rectangle.Width = Math.Max(1, Math.Abs(start.X - end.X));
-            box.Rectangle.Height = Math.Max(1, Math.Abs(start.Y - end.Y));
+            if (box.Tool == DrawingTool.Box && box.Shape is WpfRectangle rectangle)
+            {
+                double left = Math.Min(start.X, end.X);
+                double top = Math.Min(start.Y, end.Y);
+                Canvas.SetLeft(rectangle, left);
+                Canvas.SetTop(rectangle, top);
+                rectangle.Width = Math.Max(1, Math.Abs(start.X - end.X));
+                rectangle.Height = Math.Max(1, Math.Abs(start.Y - end.Y));
+            }
+            else if (box.Tool == DrawingTool.Arrow && box.Shape is WpfPath path)
+            {
+                path.Data = CreateArrowGeometry(start, end, path.StrokeThickness, out var bounds);
+                Canvas.SetLeft(path, bounds.Left);
+                Canvas.SetTop(path, bounds.Top);
+            }
+        }
+
+        private static StreamGeometry CreateArrowGeometry(
+            System.Windows.Point start,
+            System.Windows.Point end,
+            double strokeThickness,
+            out System.Windows.Rect bounds)
+        {
+            double deltaX = end.X - start.X;
+            double deltaY = end.Y - start.Y;
+            double length = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+            var geometry = new StreamGeometry();
+            if (length < 1)
+            {
+                bounds = new System.Windows.Rect(start, start);
+                geometry.Freeze();
+                return geometry;
+            }
+
+            double directionX = deltaX / length;
+            double directionY = deltaY / length;
+            double headLength = Math.Min(length * 0.5, Math.Max(10, strokeThickness * 4));
+            double halfHeadWidth = headLength * 0.55;
+            var headBase = new System.Windows.Point(
+                end.X - directionX * headLength,
+                end.Y - directionY * headLength);
+            var perpendicular = new System.Windows.Point(-directionY, directionX);
+            var firstWing = new System.Windows.Point(
+                headBase.X + perpendicular.X * halfHeadWidth,
+                headBase.Y + perpendicular.Y * halfHeadWidth);
+            var secondWing = new System.Windows.Point(
+                headBase.X - perpendicular.X * halfHeadWidth,
+                headBase.Y - perpendicular.Y * halfHeadWidth);
+            bounds = new System.Windows.Rect(start, end);
+            bounds.Union(firstWing);
+            bounds.Union(secondWing);
+            var origin = bounds.TopLeft;
+
+            System.Windows.Point ToLocal(System.Windows.Point point)
+            {
+                return new System.Windows.Point(point.X - origin.X, point.Y - origin.Y);
+            }
+
+            using (var context = geometry.Open())
+            {
+                context.BeginFigure(ToLocal(start), false, false);
+                context.LineTo(ToLocal(end), true, false);
+                context.BeginFigure(ToLocal(end), false, false);
+                context.LineTo(ToLocal(firstWing), true, false);
+                context.BeginFigure(ToLocal(end), false, false);
+                context.LineTo(ToLocal(secondWing), true, false);
+            }
+
+            geometry.Freeze();
+            return geometry;
         }
 
         private void RemoveBox(DrawBox box)
@@ -422,20 +525,21 @@ namespace ScreenBoxDrawer
                 return;
 
             box.DashStoryboard?.Stop(this);
-            box.Rectangle.BeginAnimation(OpacityProperty, null);
-            RootCanvas.Children.Remove(box.Rectangle);
+            box.Shape.BeginAnimation(OpacityProperty, null);
+            RootCanvas.Children.Remove(box.Shape);
 
             if (ReferenceEquals(_activeBox, box))
             {
                 ClearRequested?.Invoke(this, EventArgs.Empty);
                 _activeBox = null;
                 _isDrawing = false;
+                _armedTool = DrawingTool.None;
                 NativeMethods.ReleaseCapture();
                 ToggleOverlayClickThrough(true);
             }
 
             if (_boxes.Count == 0 && !_isDrawing)
-                Visibility = Visibility.Hidden;
+                Hide();
         }
 
         private MediaColor RandomColor()
@@ -468,13 +572,22 @@ namespace ScreenBoxDrawer
 
         private sealed class DrawBox
         {
-            public DrawBox(WpfRectangle rectangle)
+            public DrawBox(Shape shape, DrawingTool tool)
             {
-                Rectangle = rectangle;
+                Shape = shape;
+                Tool = tool;
             }
 
-            public WpfRectangle Rectangle { get; }
+            public Shape Shape { get; }
+            public DrawingTool Tool { get; }
             public Storyboard? DashStoryboard { get; set; }
+        }
+
+        private enum DrawingTool
+        {
+            None,
+            Box,
+            Arrow
         }
     }
 

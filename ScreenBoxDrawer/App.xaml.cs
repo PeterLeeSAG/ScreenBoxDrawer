@@ -57,7 +57,14 @@ namespace ScreenBoxDrawer
             _overlay.Show();
 
             _mouseHook = new LowLevelMouseHook(_overlay);
-            _mouseHook.Start();
+            if (!_mouseHook.Start(out var hookError))
+            {
+                System.Windows.MessageBox.Show(
+                    $"The mouse input hook could not be installed. Drawing will not work.\n\n{hookError}",
+                    "ScreenBoxDrawer",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
 
             CreateTrayIcon();
         }

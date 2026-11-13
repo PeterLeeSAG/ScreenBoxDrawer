@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -22,18 +22,20 @@ namespace ScreenBoxDrawer
             _proc = HookCallback;
         }
 
-        public void Start()
+        public bool Start(out string error)
         {
             _hookId = SetHook(_proc!);
             if (_hookId == IntPtr.Zero)
             {
                 int err = Marshal.GetLastWin32Error();
                 Debug.WriteLine($"Failed to set mouse hook. LastError={err}");
+                error = $"Windows could not install the mouse hook. Error code: {err}.";
+                return false;
             }
-            else
-            {
-                Debug.WriteLine($"Mouse hook installed. handle={_hookId}");
-            }
+
+            Debug.WriteLine($"Mouse hook installed. handle={_hookId}");
+            error = string.Empty;
+            return true;
         }
 
         public void Stop()
@@ -69,13 +71,16 @@ namespace ScreenBoxDrawer
 
                     if (msg == WM_LBUTTONDOWN)
                     {
+                        if (_isDrawing)
+                            return (IntPtr)1;
+
                         bool ctrl = (NativeMethodsLowLevel.GetAsyncKeyState(NativeMethodsLowLevel.VK_CONTROL) & 0x8000) != 0;
                         bool shift = (NativeMethodsLowLevel.GetAsyncKeyState(NativeMethodsLowLevel.VK_SHIFT) & 0x8000) != 0;
-                        if (_mainWindow.IsDrawArmed || (ctrl && shift))
+                        if (_mainWindow.IsDrawingArmed || (ctrl && shift))
                         {
-                            _isDrawing = _mainWindow.BeginDraw(new System.Drawing.Point(ms.pt.x, ms.pt.y));
-                            if (_isDrawing)
+                            if (_mainWindow.BeginDraw(new System.Drawing.Point(ms.pt.x, ms.pt.y)))
                             {
+                                _isDrawing = true;
                                 // Swallow only the initial down so the underlying app does not start a selection.
                                 return (IntPtr)1;
                             }

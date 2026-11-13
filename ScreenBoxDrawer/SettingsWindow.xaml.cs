@@ -13,6 +13,7 @@ namespace ScreenBoxDrawer
         private readonly AppSettings _originalSettings;
         private readonly MainWindow _overlay;
         private HotkeySettings _drawHotkey;
+        private HotkeySettings _arrowHotkey;
         private HotkeySettings _clearHotkey;
 
         public SettingsWindow(AppSettings settings, MainWindow overlay)
@@ -21,9 +22,11 @@ namespace ScreenBoxDrawer
             _originalSettings = settings.Clone();
             _overlay = overlay;
             _drawHotkey = settings.DrawHotkey.Clone();
+            _arrowHotkey = settings.ArrowHotkey.Clone();
             _clearHotkey = settings.ClearHotkey.Clone();
 
             DrawHotkeyBox.Text = _drawHotkey.ToDisplayString();
+            ArrowHotkeyBox.Text = _arrowHotkey.ToDisplayString();
             ClearHotkeyBox.Text = _clearHotkey.ToDisplayString();
             MaximumBoxesTextBox.Text = settings.MaximumVisibleBoxes.ToString(CultureInfo.InvariantCulture);
             BoxDisplaySecondsTextBox.Text = settings.BoxDisplaySeconds.ToString(CultureInfo.InvariantCulture);
@@ -54,6 +57,21 @@ namespace ScreenBoxDrawer
             {
                 _clearHotkey = shortcut;
                 ClearHotkeyBox.Text = shortcut.ToDisplayString();
+                ErrorTextBlock.Text = string.Empty;
+            }
+            else
+            {
+                ErrorTextBlock.Text = "Use a shortcut with at least one modifier (Ctrl, Alt, Shift, or Win).";
+            }
+        }
+
+        private void ArrowHotkeyBox_PreviewKeyDown(object sender, WpfKeyEventArgs e)
+        {
+            e.Handled = true;
+            if (TryCaptureShortcut(e, out var shortcut))
+            {
+                _arrowHotkey = shortcut;
+                ArrowHotkeyBox.Text = shortcut.ToDisplayString();
                 ErrorTextBlock.Text = string.Empty;
             }
             else
@@ -97,6 +115,7 @@ namespace ScreenBoxDrawer
             var candidate = new AppSettings
             {
                 DrawHotkey = _drawHotkey.Clone(),
+                ArrowHotkey = _arrowHotkey.Clone(),
                 ClearHotkey = _clearHotkey.Clone(),
                 MaximumVisibleBoxes = maximumBoxes,
                 BoxDisplaySeconds = boxDisplaySeconds,
