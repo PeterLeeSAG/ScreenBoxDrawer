@@ -31,6 +31,7 @@ namespace ScreenBoxDrawer
             MaximumBoxesTextBox.Text = settings.MaximumVisibleBoxes.ToString(CultureInfo.InvariantCulture);
             BoxDisplaySecondsTextBox.Text = settings.BoxDisplaySeconds.ToString(CultureInfo.InvariantCulture);
             EffectsCheckBox.IsChecked = settings.EffectsEnabled;
+            DirectGestureCheckBox.IsChecked = settings.DirectGestureEnabled;
         }
 
         public AppSettings? SavedSettings { get; private set; }
@@ -119,7 +120,8 @@ namespace ScreenBoxDrawer
                 ClearHotkey = _clearHotkey.Clone(),
                 MaximumVisibleBoxes = maximumBoxes,
                 BoxDisplaySeconds = boxDisplaySeconds,
-                EffectsEnabled = EffectsCheckBox.IsChecked == true
+                EffectsEnabled = EffectsCheckBox.IsChecked == true,
+                DirectGestureEnabled = DirectGestureCheckBox.IsChecked == true
             };
             var validationError = candidate.Validate();
             if (validationError != null)

@@ -30,6 +30,7 @@ namespace ScreenBoxDrawer
         public int MaximumVisibleBoxes { get; set; } = 10;
         public double BoxDisplaySeconds { get; set; } = 1.5;
         public bool EffectsEnabled { get; set; } = true;
+        public bool DirectGestureEnabled { get; set; } = true;
 
         public AppSettings Clone()
         {
@@ -40,7 +41,8 @@ namespace ScreenBoxDrawer
                 ClearHotkey = ClearHotkey.Clone(),
                 MaximumVisibleBoxes = MaximumVisibleBoxes,
                 BoxDisplaySeconds = BoxDisplaySeconds,
-                EffectsEnabled = EffectsEnabled
+                EffectsEnabled = EffectsEnabled,
+                DirectGestureEnabled = DirectGestureEnabled
             };
         }
 

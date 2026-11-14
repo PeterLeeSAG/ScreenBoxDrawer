@@ -33,6 +33,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Text="Draw box" VerticalAlignment="Center" Margin="0,0,8,8"/>
@@ -53,6 +54,9 @@
                 <TextBlock Grid.Row="3" Grid.ColumnSpan="2"
                            Text="Click a shortcut field and press a key combination. The draw shortcut arms the next left-button drag."
                            TextWrapping="Wrap" Foreground="#666666" FontSize="12"/>
+                <CheckBox x:Name="DirectGestureCheckBox" Grid.Row="4" Grid.ColumnSpan="2"
+                          Content="Enable Ctrl+Shift+drag direct drawing"
+                          Margin="0,10,0,0"/>
             </Grid>
         </GroupBox>
 

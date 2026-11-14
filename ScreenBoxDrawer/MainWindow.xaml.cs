@@ -104,6 +104,7 @@ namespace ScreenBoxDrawer
             Config.MaximumVisibleBoxes = _settings.MaximumVisibleBoxes;
             Config.BoxDisplaySeconds = _settings.BoxDisplaySeconds;
             Config.EffectsEnabled = _settings.EffectsEnabled;
+            Config.DirectGestureEnabled = _settings.DirectGestureEnabled;
 
             while (_boxes.Count > Config.MaximumVisibleBoxes)
                 RemoveBox(_boxes[0]);
@@ -148,13 +149,16 @@ namespace ScreenBoxDrawer
             _armedTool = DrawingTool.None;
             _isDrawing = false;
             _activeBox = null;
+            Hide();
 
             foreach (var box in _boxes.ToArray())
                 RemoveBox(box);
 
+            RootCanvas.Children.Clear();
+            RootCanvas.InvalidateVisual();
+            UpdateLayout();
             NativeMethods.ReleaseCapture();
             ToggleOverlayClickThrough(true);
-            Hide();
         }
 
         public bool BeginDraw(System.Drawing.Point startScreen)
@@ -524,8 +528,11 @@ namespace ScreenBoxDrawer
             if (!_boxes.Remove(box))
                 return;
 
-            box.DashStoryboard?.Stop(this);
+            box.DashStoryboard?.Remove(this);
+            box.Shape.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
             box.Shape.BeginAnimation(OpacityProperty, null);
+            box.Shape.Opacity = 0;
+            box.Shape.Visibility = Visibility.Collapsed;
             RootCanvas.Children.Remove(box.Shape);
 
             if (ReferenceEquals(_activeBox, box))

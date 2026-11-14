@@ -33,6 +33,7 @@ namespace ScreenBoxDrawer
         //   or to Solid/DashedStatic/DashedMoving to force one.
         public static EffectMode SelectedEffect { get; set; } = EffectMode.Solid;
         public static bool EffectsEnabled { get; set; } = true;
+        public static bool DirectGestureEnabled { get; set; } = true;
         public static int MaximumVisibleBoxes { get; set; } = 10;
 
         // If SelectedEffect == Random, control probabilities by weight:

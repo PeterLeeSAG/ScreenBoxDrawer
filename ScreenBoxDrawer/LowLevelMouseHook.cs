@@ -76,7 +76,8 @@ namespace ScreenBoxDrawer
 
                         bool ctrl = (NativeMethodsLowLevel.GetAsyncKeyState(NativeMethodsLowLevel.VK_CONTROL) & 0x8000) != 0;
                         bool shift = (NativeMethodsLowLevel.GetAsyncKeyState(NativeMethodsLowLevel.VK_SHIFT) & 0x8000) != 0;
-                        if (_mainWindow.IsDrawingArmed || (ctrl && shift))
+                        if (_mainWindow.IsDrawingArmed ||
+                            (Config.DirectGestureEnabled && ctrl && shift))
                         {
                             if (_mainWindow.BeginDraw(new System.Drawing.Point(ms.pt.x, ms.pt.y)))
                             {
