@@ -35,6 +35,7 @@ namespace ScreenBoxDrawer
         private System.Windows.Point _start;
         private DrawBox? _activeBox;
         private bool _isDrawing;
+        private bool _hasMoved;
         private DrawingTool _armedTool;
         private bool _hotkeysRegistered;
 
@@ -146,14 +147,23 @@ namespace ScreenBoxDrawer
             }
 
             ClearRequested?.Invoke(this, EventArgs.Empty);
+            var pendingBox = _activeBox;
             _armedTool = DrawingTool.None;
             _isDrawing = false;
             _activeBox = null;
+            _hasMoved = false;
             Hide();
 
-            foreach (var box in _boxes.ToArray())
-                RemoveBox(box);
+            if (pendingBox != null && !_boxes.Contains(pendingBox))
+                DisposeShape(pendingBox);
 
+            foreach (var box in _boxes.ToArray())
+            {
+                DisposeShape(box);
+                RootCanvas.Children.Remove(box.Shape);
+            }
+
+            _boxes.Clear();
             RootCanvas.Children.Clear();
             RootCanvas.InvalidateVisual();
             UpdateLayout();
@@ -171,10 +181,10 @@ namespace ScreenBoxDrawer
             if (_isDrawing)
                 return false;
 
-            var tool = _armedTool == DrawingTool.None ? DrawingTool.Box : _armedTool;
-            while (_boxes.Count >= Config.MaximumVisibleBoxes)
-                RemoveBox(_boxes[0]);
+            if (_boxes.Count == 0 && RootCanvas.Children.Count > 0)
+                RootCanvas.Children.Clear();
 
+            var tool = _armedTool == DrawingTool.None ? DrawingTool.Box : _armedTool;
             ToggleOverlayClickThrough(false);
             NativeMethods.SetCapture(_windowHandle);
             _armedTool = DrawingTool.None;
@@ -192,7 +202,7 @@ namespace ScreenBoxDrawer
             shape.Fill = Config.UseFill
                 ? new SolidColorBrush(MediaColor.FromArgb(60, color.R, color.G, color.B))
                 : System.Windows.Media.Brushes.Transparent;
-            shape.Visibility = Visibility.Visible;
+            shape.Visibility = Visibility.Collapsed;
 
             double thickness = Config.StrokeThickness;
             if (Config.AllowRandomThickness)
@@ -200,16 +210,9 @@ namespace ScreenBoxDrawer
             shape.StrokeThickness = thickness;
 
             var box = new DrawBox(shape, tool);
-            RootCanvas.Children.Add(shape);
-            _boxes.Add(box);
             _activeBox = box;
             _isDrawing = true;
-
-            ApplyEffect(box, Config.EffectsEnabled ? ChooseEffect() : EffectMode.Solid, thickness);
-            UpdateDrawing(box, _start, _start);
-            if (!IsVisible)
-                Show();
-            Visibility = Visibility.Visible;
+            _hasMoved = false;
             return true;
         }
 
@@ -227,6 +230,16 @@ namespace ScreenBoxDrawer
             var box = _activeBox;
             _activeBox = null;
             _isDrawing = false;
+
+            if (!_hasMoved)
+            {
+                _hasMoved = false;
+                DisposeShape(box);
+                NativeMethods.ReleaseCapture();
+                ToggleOverlayClickThrough(true);
+                Hide();
+                return;
+            }
 
             double displaySeconds = Config.BoxDisplaySeconds;
             if (displaySeconds > 0)
@@ -260,7 +273,36 @@ namespace ScreenBoxDrawer
                 return;
 
             var current = ConvertScreenPixelsToWindowDips(currentScreen);
+            if (!_hasMoved &&
+                Math.Abs(current.X - _start.X) < 2 &&
+                Math.Abs(current.Y - _start.Y) < 2)
+            {
+                return;
+            }
+
+            if (!_hasMoved)
+                ActivateDrawing(_activeBox);
+
             UpdateDrawing(_activeBox, _start, current);
+        }
+
+        private void ActivateDrawing(DrawBox box)
+        {
+            while (_boxes.Count >= Config.MaximumVisibleBoxes)
+                RemoveBox(_boxes[0]);
+
+            RootCanvas.Children.Add(box.Shape);
+            _boxes.Add(box);
+            box.Shape.Visibility = Visibility.Visible;
+            ApplyEffect(
+                box,
+                Config.EffectsEnabled ? ChooseEffect() : EffectMode.Solid,
+                box.Shape.StrokeThickness);
+            UpdateDrawing(box, _start, _start);
+            if (!IsVisible)
+                Show();
+            Visibility = Visibility.Visible;
+            _hasMoved = true;
         }
 
         private IntPtr WindowProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -528,11 +570,7 @@ namespace ScreenBoxDrawer
             if (!_boxes.Remove(box))
                 return;
 
-            box.DashStoryboard?.Remove(this);
-            box.Shape.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
-            box.Shape.BeginAnimation(OpacityProperty, null);
-            box.Shape.Opacity = 0;
-            box.Shape.Visibility = Visibility.Collapsed;
+            DisposeShape(box);
             RootCanvas.Children.Remove(box.Shape);
 
             if (ReferenceEquals(_activeBox, box))
@@ -547,6 +585,15 @@ namespace ScreenBoxDrawer
 
             if (_boxes.Count == 0 && !_isDrawing)
                 Hide();
+        }
+
+        private void DisposeShape(DrawBox box)
+        {
+            box.DashStoryboard?.Remove(this);
+            box.Shape.BeginAnimation(Shape.StrokeDashOffsetProperty, null);
+            box.Shape.BeginAnimation(OpacityProperty, null);
+            box.Shape.Opacity = 0;
+            box.Shape.Visibility = Visibility.Collapsed;
         }
 
         private MediaColor RandomColor()
