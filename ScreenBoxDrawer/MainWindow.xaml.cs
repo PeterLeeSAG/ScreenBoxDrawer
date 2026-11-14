@@ -480,7 +480,7 @@ namespace ScreenBoxDrawer
             var animation = new DoubleAnimation
             {
                 From = 0,
-                To = dashLength + dashGap,
+                To = -(dashLength + dashGap),
                 Duration = TimeSpan.FromSeconds(Math.Max(0.05, Config.MovingDashSeconds)),
                 RepeatBehavior = RepeatBehavior.Forever
             };

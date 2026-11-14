@@ -29,16 +29,16 @@ namespace ScreenBoxDrawer
         public static double CornerRadius { get; set; } = 8.0;
 
         // Effect selection:
-        // - Set SelectedEffect to Random to keep random behavior,
-        //   or to Solid/DashedStatic/DashedMoving to force one.
-        public static EffectMode SelectedEffect { get; set; } = EffectMode.Solid;
+        // - Use a moving dashed style by default when effects are enabled.
+        // - Set SelectedEffect to Solid/DashedStatic/Random to choose another mode.
+        public static EffectMode SelectedEffect { get; set; } = EffectMode.DashedMoving;
         public static bool EffectsEnabled { get; set; } = true;
         public static bool DirectGestureEnabled { get; set; } = true;
         public static int MaximumVisibleBoxes { get; set; } = 10;
 
         // If SelectedEffect == Random, control probabilities by weight:
         // (weights relative to each other; set zero to disable a type)
-        public static double WeightSolid { get; set; } = 1.0;
+        public static double WeightSolid { get; set; } = 0.0;
         public static double WeightDashedStatic { get; set; } = 1.0;
         public static double WeightDashedMoving { get; set; } = 1.0;
 
