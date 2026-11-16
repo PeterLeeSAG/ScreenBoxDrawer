@@ -13,6 +13,7 @@ namespace ScreenBoxDrawer
         private MainWindow? _overlay;
         private Forms.NotifyIcon? _notifyIcon;
         private Forms.ContextMenuStrip? _trayMenu;
+        private System.Drawing.Icon? _trayIcon;
         private AppSettings _settings = new();
 
         private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new(-4);
@@ -77,6 +78,7 @@ namespace ScreenBoxDrawer
                 _notifyIcon.Visible = false;
                 _notifyIcon.Dispose();
             }
+            _trayIcon?.Dispose();
             _trayMenu?.Dispose();
             base.OnExit(e);
         }
@@ -91,9 +93,11 @@ namespace ScreenBoxDrawer
             _trayMenu.Items.Add("Exit", null, (_, _) =>
                 Dispatcher.BeginInvoke(new Action(Shutdown)));
 
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "screenboxdrawer.ico");
+            _trayIcon = new System.Drawing.Icon(iconPath);
             _notifyIcon = new Forms.NotifyIcon
             {
-                Icon = System.Drawing.SystemIcons.Application,
+                Icon = _trayIcon,
                 Text = "ScreenBoxDrawer",
                 ContextMenuStrip = _trayMenu,
                 Visible = true

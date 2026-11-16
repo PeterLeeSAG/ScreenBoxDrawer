@@ -1,21 +1,116 @@
 # ScreenBoxDrawer
 
-ScreenBoxDrawer is a Windows WPF overlay for drawing temporary boxes on screen.
+ScreenBoxDrawer is a lightweight Windows desktop overlay for highlighting
+content during presentations, demonstrations, screen recordings, and remote
+support sessions. Draw temporary boxes and arrows over any application without
+changing the underlying screen.
 
-## Use
+The application runs in the Windows notification area and uses configurable
+global shortcuts, so it can be used without bringing a control window to the
+foreground.
 
-- Find the ScreenBoxDrawer icon in the taskbar notification area and choose **Settings...** to open the control panel.
-- The default draw shortcut is **Ctrl+Shift+D**. Press it, then drag with the left mouse button to draw a box.
-- The default arrow shortcut is **Ctrl+Shift+A**. Press it, then drag from the arrow tail to its tip.
-- The default clear shortcut is **Ctrl+Shift+X**. It removes all visible boxes.
-- **Ctrl+Shift+drag** also remains available as a direct drawing gesture.
-- Choose the maximum number of simultaneously visible boxes (1–100). When the limit is reached, the oldest box or arrow is removed.
-- Set the total time a box remains visible after drawing, including its fade-out; **0** keeps it until manually cleared or removed by the box limit. The default is 1.5 seconds.
-- Disable dashed and moving effects to use solid outlines.
-- Use the notification-area menu or settings panel to clear boxes, and choose **Exit** to close the app.
+## Features
 
-Settings are stored in `%LOCALAPPDATA%\ScreenBoxDrawer\settings.json`.
+- Draw rounded boxes over the desktop.
+- Draw arrows from a tail point to a tip point.
+- Display multiple drawings at the same time.
+- Automatically remove drawings after a configurable duration.
+- Keep drawings until they are cleared by setting the duration to `0`.
+- Limit the number of visible drawings; the oldest drawing is removed first
+  when the limit is reached.
+- Enable or disable moving dashed outline effects.
+- Use a configurable global shortcut for each drawing and clearing action.
+- Optionally draw directly with `Ctrl+Shift+drag`.
+- Ignore a shortcut followed by a click without movement, so accidental clicks
+  do not create zero-size drawings.
+- Control the overlay from the notification-area menu.
+- Persist settings under `%LOCALAPPDATA%\ScreenBoxDrawer\settings.json`.
 
-## Build
+## Quick start
 
-Build `ScreenBoxDrawer\ScreenBoxDrawer.sln` with the .NET 8 SDK on Windows.
+### Requirements
+
+- Windows
+- .NET 8 SDK
+
+### Build and run
+
+From the repository root:
+
+```powershell
+dotnet build .\ScreenBoxDrawer\ScreenBoxDrawer.sln
+dotnet run --project .\ScreenBoxDrawer\ScreenBoxDrawer.csproj
+```
+
+The application is a notification-area utility, so it does not open a normal
+main window at startup. Look for the **ScreenBoxDrawer** icon in the Windows
+notification area.
+
+## Default shortcuts
+
+| Action | Shortcut | Behavior |
+| --- | --- | --- |
+| Draw a box | `Ctrl+Shift+D` | Arms the box tool for the next left-button drag. |
+| Draw an arrow | `Ctrl+Shift+A` | Arms the arrow tool for the next left-button drag. |
+| Clear all drawings | `Ctrl+Shift+X` | Removes every visible box and arrow. |
+| Direct drawing | `Ctrl+Shift+drag` | Draws a box without first pressing the box shortcut. |
+
+After pressing a drawing shortcut, hold the left mouse button and drag across
+the screen. Releasing the button completes the drawing. A click without
+movement is discarded.
+
+The direct `Ctrl+Shift+drag` gesture is enabled by default and can be disabled
+in **Settings**.
+
+## Configure the application
+
+Right-click the notification-area icon and choose **Settings...**. The
+settings panel provides:
+
+- **Shortcuts** - Capture new combinations for drawing boxes, drawing arrows,
+  and clearing all drawings. Each shortcut must include at least one modifier
+  key (`Ctrl`, `Alt`, `Shift`, or `Win`), and the three shortcuts must be
+  different.
+- **Maximum visible boxes** - Choose from 1 to 100 visible drawings. Boxes and
+  arrows share this limit. When a new drawing would exceed the limit, the
+  oldest drawing is removed first.
+- **Visible duration** - Set the number of seconds a drawing remains visible.
+  A value of `0` means unlimited duration. A positive duration includes the
+  fade-out period.
+- **Effects** - Enable or disable moving dashed outlines. Disabled drawings use
+  a solid outline.
+- **Direct gesture** - Enable or disable `Ctrl+Shift+drag`.
+
+The notification-area menu also includes **Clear all boxes** and **Exit**.
+
+## How it works
+
+ScreenBoxDrawer places a transparent, click-through WPF overlay across the
+Windows virtual desktop. The overlay becomes interactive only while a drawing
+drag is in progress, then returns to click-through mode when the drawing is
+complete. Existing applications remain usable underneath the overlay.
+
+Global keyboard input is handled through Windows registered hotkeys, and mouse
+dragging is captured through a low-level mouse hook. If another application
+already owns a selected shortcut, ScreenBoxDrawer reports the registration
+error so a different shortcut can be chosen.
+
+## Development
+
+The project is a .NET 8 WPF application with Windows Forms integration for the
+notification-area icon.
+
+```powershell
+# Build the solution
+dotnet build .\ScreenBoxDrawer\ScreenBoxDrawer.sln
+
+# Build an optimized release
+dotnet build .\ScreenBoxDrawer\ScreenBoxDrawer.sln -c Release
+```
+
+The main application code is in
+[`ScreenBoxDrawer/`](ScreenBoxDrawer/), with the
+overlay lifecycle implemented in
+[`MainWindow.xaml.cs`](ScreenBoxDrawer/MainWindow.xaml.cs)
+and persisted settings implemented in
+[`AppSettings.cs`](ScreenBoxDrawer/AppSettings.cs).
