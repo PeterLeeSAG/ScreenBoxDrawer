@@ -793,24 +793,65 @@ namespace ScreenBoxDrawer
             Toolbar.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
             Toolbar.VerticalAlignment = System.Windows.VerticalAlignment.Top;
             Toolbar.Margin = new Thickness(0);
+            Toolbar.Visibility = Visibility.Visible;
+            Toolbar.IsHitTestVisible = true;
+            Toolbar.InvalidateMeasure();
+            Toolbar.InvalidateArrange();
             Toolbar.Measure(new System.Windows.Size(
                 double.PositiveInfinity,
                 double.PositiveInfinity));
+            Toolbar.UpdateLayout();
 
             var toolbarWidth = Toolbar.DesiredSize.Width;
             var toolbarHeight = Toolbar.DesiredSize.Height;
+            if (toolbarWidth <= 0)
+                toolbarWidth = Toolbar.ActualWidth;
+            if (toolbarHeight <= 0)
+                toolbarHeight = Toolbar.ActualHeight;
+            if (toolbarWidth <= 0)
+                toolbarWidth = 760;
+            if (toolbarHeight <= 0)
+                toolbarHeight = 88;
+
             var x = _selection.Left + (_selection.Width - toolbarWidth) / 2;
             var y = _selection.Bottom + gap;
 
-            if (y + toolbarHeight > RootGrid.ActualHeight - edgeMargin)
-                y = _selection.Top - toolbarHeight - gap;
-
-            if (y < edgeMargin)
+            if (y + toolbarHeight <= RootGrid.ActualHeight - edgeMargin)
             {
-                x = _selection.Right + gap;
-                y = _selection.Top;
-                if (x + toolbarWidth > RootGrid.ActualWidth - edgeMargin)
-                    x = _selection.Left - toolbarWidth - gap;
+                // First choice: below the capture area.
+            }
+            else
+            {
+                var aboveY = _selection.Top - toolbarHeight - gap;
+                if (aboveY >= edgeMargin)
+                {
+                    y = aboveY;
+                }
+                else
+                {
+                    var rightX = _selection.Right + gap;
+                    if (rightX + toolbarWidth <= RootGrid.ActualWidth - edgeMargin)
+                    {
+                        x = rightX;
+                        y = _selection.Top;
+                    }
+                    else
+                    {
+                        var leftX = _selection.Left - toolbarWidth - gap;
+                        if (leftX >= edgeMargin)
+                        {
+                            x = leftX;
+                            y = _selection.Top;
+                        }
+                        else
+                        {
+                            x = _selection.Left +
+                                (_selection.Width - toolbarWidth) / 2;
+                            y = _selection.Top +
+                                (_selection.Height - toolbarHeight) / 2;
+                        }
+                    }
+                }
             }
 
             var maxX = Math.Max(
@@ -819,15 +860,101 @@ namespace ScreenBoxDrawer
             var maxY = Math.Max(
                 edgeMargin,
                 RootGrid.ActualHeight - toolbarHeight - edgeMargin);
-            x = Math.Clamp(
-                x,
-                edgeMargin,
-                maxX);
-            y = Math.Clamp(
-                y,
-                edgeMargin,
-                maxY);
+            x = Math.Clamp(x, edgeMargin, maxX);
+            y = Math.Clamp(y, edgeMargin, maxY);
+
             Toolbar.Margin = new Thickness(x, y, 0, 0);
+            Toolbar.Visibility = Visibility.Visible;
+            Toolbar.IsHitTestVisible = true;
+            Toolbar.UpdateLayout();
+
+            var finalToolbarRect = new System.Windows.Rect(
+                x,
+                y,
+                toolbarWidth,
+                toolbarHeight);
+            if (finalToolbarRect.Right > RootGrid.ActualWidth)
+            {
+                Toolbar.Margin = new Thickness(
+                    Math.Max(edgeMargin, RootGrid.ActualWidth - toolbarWidth - edgeMargin),
+                    y,
+                    0,
+                    0);
+            }
+            if (finalToolbarRect.Bottom > RootGrid.ActualHeight)
+            {
+                Toolbar.Margin = new Thickness(
+                    Toolbar.Margin.Left,
+                    Math.Max(edgeMargin, RootGrid.ActualHeight - toolbarHeight - edgeMargin),
+                    0,
+                    0);
+            }
+            Toolbar.Visibility = Visibility.Visible;
+        }
+
+        private DrawingPoint GetSelectionCenterPixel()
+        {
+            var left = Math.Min(
+                _selectionPixels.Left,
+                _selectionPixels.Right);
+            var top = Math.Min(
+                _selectionPixels.Top,
+                _selectionPixels.Bottom);
+            var right = Math.Max(
+                _selectionPixels.Left,
+                _selectionPixels.Right);
+            var bottom = Math.Max(
+                _selectionPixels.Top,
+                _selectionPixels.Bottom);
+
+            return new DrawingPoint(
+                _screenBounds.Left + left + (right - left) / 2,
+                _screenBounds.Top + top + (bottom - top) / 2);
+        }
+
+        private static DrawingRectangle FindMonitorContaining(
+            DrawingPoint pixel)
+        {
+            var monitors = GetDisplayMonitorBounds();
+            foreach (var monitor in monitors)
+            {
+                if (monitor.Contains(pixel))
+                    return monitor;
+            }
+
+            DrawingRectangle nearest = CreateUnionBounds(monitors);
+            var nearestDistance = double.PositiveInfinity;
+            foreach (var monitor in monitors)
+            {
+                var centerX = monitor.Left + monitor.Width / 2.0;
+                var centerY = monitor.Top + monitor.Height / 2.0;
+                var dx = pixel.X - centerX;
+                var dy = pixel.Y - centerY;
+                var distance = dx * dx + dy * dy;
+                if (distance < nearestDistance)
+                {
+                    nearestDistance = distance;
+                    nearest = monitor;
+                }
+            }
+
+            return nearest;
+        }
+
+        private System.Windows.Rect ConvertMonitorRectToWindowDips(
+            DrawingRectangle monitor)
+        {
+            var left = (monitor.Left - _screenBounds.Left) *
+                RootGrid.ActualWidth / _imagePixelWidth;
+            var top = (monitor.Top - _screenBounds.Top) *
+                RootGrid.ActualHeight / _imagePixelHeight;
+            var right = (monitor.Right - _screenBounds.Left) *
+                RootGrid.ActualWidth / _imagePixelWidth;
+            var bottom = (monitor.Bottom - _screenBounds.Top) *
+                RootGrid.ActualHeight / _imagePixelHeight;
+            return new System.Windows.Rect(
+                new System.Windows.Point(left, top),
+                new System.Windows.Point(right, bottom));
         }
 
         private System.Windows.Point ClampToWindow(System.Windows.Point point)
