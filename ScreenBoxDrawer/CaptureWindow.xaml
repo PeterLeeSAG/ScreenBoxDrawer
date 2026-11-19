@@ -47,5 +47,79 @@
                 Panel.ZIndex="100"
                 Visibility="Collapsed">
         </local:CaptureToolbar>
+        <Canvas x:Name="FontSizeMenuHost"
+                Panel.ZIndex="200"
+                IsHitTestVisible="True"
+                ClipToBounds="False">
+            <Border x:Name="FontSizeMenu"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="True"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Width="66"
+                    Height="270"
+                    Background="#FFFFFFFF"
+                    BorderBrush="#FF1976D2"
+                    BorderThickness="1"
+                    CornerRadius="2"
+                    ClipToBounds="True">
+                <StackPanel>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="12" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="12 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="14" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="14 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="16" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="16 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="18" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="18 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="20" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="20 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="24" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="24 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="30" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="30 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="36" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="36 pt"/>
+                    </Button>
+                    <Button Height="30" Padding="8,2"
+                            BorderThickness="0" Background="Transparent"
+                            HorizontalContentAlignment="Left"
+                            Tag="48" Click="FontSizeMenuItem_Click">
+                        <TextBlock Text="48 pt"/>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Canvas>
     </Grid>
 </Window>

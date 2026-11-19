@@ -14,7 +14,7 @@ foreground.
 - Draw rounded boxes over the desktop.
 - Draw arrows from a tail point to a tip point.
 - Capture and freeze a rectangular area of the virtual desktop.
-- Annotate a frozen capture with lines, arrows, boxes, circles, brushes, and
+- Annotate a frozen capture with lines, arrows, boxes, circles, mosaics, brushes, and
   text.
 - Undo the most recent captured markup.
 - Choose drawing thickness and text font size from the capture toolbar.

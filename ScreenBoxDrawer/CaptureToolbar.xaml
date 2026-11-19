@@ -8,8 +8,10 @@
             BorderThickness="1"
             CornerRadius="8"
             ClipToBounds="False">
-        <Grid x:Name="ToolbarRoot"
-              ClipToBounds="False">
+        <Grid x:Name="ToolbarContainer"
+             ClipToBounds="False">
+            <Grid x:Name="ToolbarRoot"
+                  ClipToBounds="False">
             <StackPanel>
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Center">
@@ -74,6 +76,33 @@
                                FontSize="22"
                                Foreground="#555555"
                                VerticalAlignment="Center"/>
+                </Button>
+                <Button x:Name="MosaicButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="MosaicButton_Click">
+                    <Grid Width="22" Height="22">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Grid.Column="0" Margin="1" Background="#777777"/>
+                        <Border Grid.Row="0" Grid.Column="1" Margin="1" Background="#B0B0B0"/>
+                        <Border Grid.Row="0" Grid.Column="2" Margin="1" Background="#777777"/>
+                        <Border Grid.Row="1" Grid.Column="0" Margin="1" Background="#B0B0B0"/>
+                        <Border Grid.Row="1" Grid.Column="1" Margin="1" Background="#555555"/>
+                        <Border Grid.Row="1" Grid.Column="2" Margin="1" Background="#B0B0B0"/>
+                        <Border Grid.Row="2" Grid.Column="0" Margin="1" Background="#777777"/>
+                        <Border Grid.Row="2" Grid.Column="1" Margin="1" Background="#B0B0B0"/>
+                        <Border Grid.Row="2" Grid.Column="2" Margin="1" Background="#777777"/>
+                    </Grid>
                 </Button>
                 <Button x:Name="TextButton"
                         Width="40" Height="38"
@@ -159,22 +188,24 @@
                                Width="34"
                                VerticalAlignment="Center"
                                Foreground="#555555"/>
-                    <ComboBox x:Name="FontSizeCombo"
-                              Width="66"
-                              Height="30"
-                              SelectedIndex="2"
-                              VerticalAlignment="Center"
-                              SelectionChanged="FontSizeCombo_SelectionChanged">
-                        <ComboBoxItem Content="12 pt"/>
-                        <ComboBoxItem Content="14 pt"/>
-                        <ComboBoxItem Content="16 pt"/>
-                        <ComboBoxItem Content="18 pt"/>
-                        <ComboBoxItem Content="20 pt"/>
-                        <ComboBoxItem Content="24 pt"/>
-                        <ComboBoxItem Content="30 pt"/>
-                        <ComboBoxItem Content="36 pt"/>
-                        <ComboBoxItem Content="48 pt"/>
-                    </ComboBox>
+                    <Button x:Name="FontSizeButton"
+                            Width="66"
+                            Height="30"
+                            Padding="8,2"
+                            VerticalAlignment="Center"
+                            HorizontalContentAlignment="Left"
+                            Click="FontSizeButton_Click">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock x:Name="FontSizeButtonText"
+                                       Text="16 pt"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock Text="▾"
+                                       DockPanel.Dock="Right"
+                                       Margin="4,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="#555555"/>
+                        </DockPanel>
+                    </Button>
                     <TextBlock Text="Thickness"
                                Margin="8,0,0,0"
                                Width="58"
@@ -300,6 +331,7 @@
                            FontSize="12"
                            Foreground="White"/>
             </Border>
+            </Grid>
         </Grid>
     </Border>
 </UserControl>

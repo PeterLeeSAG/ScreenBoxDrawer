@@ -21,11 +21,15 @@ support, demonstrations, and screen recordings.
    - **Arrow** draws a shaft and arrowhead.
    - **Box** draws a rectangular outline.
    - **Circle** draws an ellipse outline.
+   - **Mosaic** covers a dragged rectangular area with a pixelated effect.
    - **Brush** draws freehand strokes.
    - **Text** inserts text by clicking inside the capture and typing.
    - **Undo** removes the latest active or committed markup.
    - The toolbar provides drawing thickness, text font size, and color
      controls.
+   - The text font-size menu is drawn in the capture-window overlay, outside
+     the toolbox border. It opens below or above the size button, stays within
+     the capture desktop bounds, and does not use a native window dropdown.
    The toolbar is placed below the selected rectangle first. If that space is
    too close to the bottom edge, it moves above the rectangle and then to a
    side if necessary.

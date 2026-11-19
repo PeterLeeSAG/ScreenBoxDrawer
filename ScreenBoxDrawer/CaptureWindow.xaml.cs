@@ -23,6 +23,8 @@ using WpfPolyline = System.Windows.Shapes.Polyline;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
 using WpfTextBlock = System.Windows.Controls.TextBlock;
 using WpfTextBox = System.Windows.Controls.TextBox;
+using WpfButton = System.Windows.Controls.Button;
+using WpfImage = System.Windows.Controls.Image;
 
 namespace ScreenBoxDrawer
 {
@@ -47,6 +49,7 @@ namespace ScreenBoxDrawer
         private System.Windows.Media.Color _captureColor =
             System.Windows.Media.Colors.Red;
 
+
         public CaptureWindow()
         {
             InitializeComponent();
@@ -55,6 +58,7 @@ namespace ScreenBoxDrawer
             Toolbar.BoxRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Box);
             Toolbar.CircleRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Circle);
             Toolbar.BrushRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Brush);
+            Toolbar.MosaicRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Mosaic);
             Toolbar.TextRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Text);
             Toolbar.UndoRequested += UndoMarkup;
             Toolbar.CopyRequested += CopyButton_Click;
@@ -65,6 +69,7 @@ namespace ScreenBoxDrawer
                 _drawingThickness = args.Thickness;
                 Toolbar.StatusText = $"Drawing thickness: {args.Thickness:0}";
             };
+            Toolbar.FontSizeMenuRequested += ToggleFontSizeMenu;
             Toolbar.FontSizeChanged += (_, args) =>
             {
                 _textFontSize = args.FontSize;
@@ -111,6 +116,12 @@ namespace ScreenBoxDrawer
 
         private void RootGrid_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
+            if (FontSizeMenu.Visibility == Visibility.Visible &&
+                !IsFontSizeMenuSource(e.OriginalSource as DependencyObject))
+            {
+                FontSizeMenu.Visibility = Visibility.Collapsed;
+            }
+
             if (IsToolbarSource(e.OriginalSource as DependencyObject))
                 return;
 
@@ -206,6 +217,18 @@ namespace ScreenBoxDrawer
 
                 if (IsDegenerateMarkup(_activeMarkup, end))
                     MarkupCanvas.Children.Remove(_activeMarkup);
+                else if (_markupTool == CaptureMarkupTool.Mosaic &&
+                         _activeMarkup is WpfRectangle mosaicPreview)
+                {
+                    var mosaicRect = new System.Windows.Rect(
+                        Canvas.GetLeft(mosaicPreview),
+                        Canvas.GetTop(mosaicPreview),
+                        mosaicPreview.Width,
+                        mosaicPreview.Height);
+                    MarkupCanvas.Children.Remove(mosaicPreview);
+                    var mosaicImage = CreateMosaicImage(mosaicRect);
+                    MarkupCanvas.Children.Add(mosaicImage);
+                }
                 _activeMarkup = null;
             }
 
@@ -294,6 +317,16 @@ namespace ScreenBoxDrawer
                 };
             }
 
+            if (_markupTool == CaptureMarkupTool.Mosaic)
+            {
+                return new WpfRectangle
+                {
+                    Stroke = stroke,
+                    StrokeThickness = _drawingThickness,
+                    Fill = System.Windows.Media.Brushes.Transparent
+                };
+            }
+
             var brushStroke = new WpfPolyline
             {
                 Stroke = stroke,
@@ -364,6 +397,129 @@ namespace ScreenBoxDrawer
             return Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
         }
 
+        private WpfImage CreateMosaicImage(System.Windows.Rect displayRect)
+        {
+            var scaleX = _selectionPixels.Width / _selection.Width;
+            var scaleY = _selectionPixels.Height / _selection.Height;
+            var sourceLeft = (int)Math.Clamp(
+                (displayRect.Left - _selection.Left) * scaleX,
+                0,
+                _selectionPixels.Width - 1);
+            var sourceTop = (int)Math.Clamp(
+                (displayRect.Top - _selection.Top) * scaleY,
+                0,
+                _selectionPixels.Height - 1);
+            var sourceRight = (int)Math.Clamp(
+                (displayRect.Right - _selection.Left) * scaleX,
+                sourceLeft + 1,
+                _selectionPixels.Width);
+            var sourceBottom = (int)Math.Clamp(
+                (displayRect.Bottom - _selection.Top) * scaleY,
+                sourceTop + 1,
+                _selectionPixels.Height);
+
+            var pixelWidth = Math.Max(1, sourceRight - sourceLeft);
+            var pixelHeight = Math.Max(1, sourceBottom - sourceTop);
+            var blockSize = Math.Max(
+                6,
+                (int)Math.Round(
+                    _drawingThickness <= 3
+                        ? 10
+                        : _drawingThickness * 3));
+
+            var croppedSource = new CroppedBitmap(
+                _desktopImage,
+                new Int32Rect(
+                    _selectionPixels.X + sourceLeft,
+                    _selectionPixels.Y + sourceTop,
+                    pixelWidth,
+                    pixelHeight));
+            var convertedSource = new FormatConvertedBitmap(
+                croppedSource,
+                PixelFormats.Bgra32,
+                null,
+                0);
+            var sourceStride = pixelWidth * 4;
+            var sourcePixels = new byte[sourceStride * pixelHeight];
+            convertedSource.CopyPixels(
+                new Int32Rect(0, 0, pixelWidth, pixelHeight),
+                sourcePixels,
+                sourceStride,
+                0);
+
+            var mosaicPixels = new byte[sourcePixels.Length];
+            Array.Copy(sourcePixels, mosaicPixels, sourcePixels.Length);
+            for (var blockY = 0; blockY < pixelHeight; blockY += blockSize)
+            {
+                for (var blockX = 0; blockX < pixelWidth; blockX += blockSize)
+                {
+                    var blockWidth = Math.Min(blockSize, pixelWidth - blockX);
+                    var blockHeight = Math.Min(blockSize, pixelHeight - blockY);
+                    ulong blue = 0;
+                    ulong green = 0;
+                    ulong red = 0;
+                    ulong alpha = 0;
+
+                    for (var y = blockY; y < blockY + blockHeight; y++)
+                    {
+                        for (var x = blockX; x < blockX + blockWidth; x++)
+                        {
+                            var sourceOffset = y * sourceStride + x * 4;
+                            blue += sourcePixels[sourceOffset];
+                            green += sourcePixels[sourceOffset + 1];
+                            red += sourcePixels[sourceOffset + 2];
+                            alpha += sourcePixels[sourceOffset + 3];
+                        }
+                    }
+
+                    var sampleCount = (ulong)(blockWidth * blockHeight);
+                    var blockBlue = (byte)(blue / sampleCount);
+                    var blockGreen = (byte)(green / sampleCount);
+                    var blockRed = (byte)(red / sampleCount);
+                    var blockAlpha = (byte)(alpha / sampleCount);
+                    for (var y = blockY; y < blockY + blockHeight; y++)
+                    {
+                        for (var x = blockX; x < blockX + blockWidth; x++)
+                        {
+                            var targetOffset = y * sourceStride + x * 4;
+                            mosaicPixels[targetOffset] = blockBlue;
+                            mosaicPixels[targetOffset + 1] = blockGreen;
+                            mosaicPixels[targetOffset + 2] = blockRed;
+                            mosaicPixels[targetOffset + 3] = blockAlpha;
+                        }
+                    }
+                }
+            }
+
+            var mosaicTarget = new WriteableBitmap(
+                pixelWidth,
+                pixelHeight,
+                96,
+                96,
+                PixelFormats.Bgra32,
+                null);
+            mosaicTarget.WritePixels(
+                new Int32Rect(0, 0, pixelWidth, pixelHeight),
+                mosaicPixels,
+                sourceStride,
+                0);
+
+            var image = new WpfImage
+            {
+                Source = mosaicTarget,
+                Width = displayRect.Width,
+                Height = displayRect.Height,
+                Stretch = Stretch.Fill,
+                IsHitTestVisible = false
+            };
+            RenderOptions.SetBitmapScalingMode(
+                image,
+                BitmapScalingMode.NearestNeighbor);
+            Canvas.SetLeft(image, displayRect.Left);
+            Canvas.SetTop(image, displayRect.Top);
+            return image;
+        }
+
         private void UpdateMarkup(
             Shape markup,
             System.Windows.Point start,
@@ -428,6 +584,61 @@ namespace ScreenBoxDrawer
 
             _markupTool = tool;
             Toolbar.SetSelectedTool(tool);
+        }
+
+        private void ToggleFontSizeMenu(object? sender, EventArgs e)
+        {
+            if (FontSizeMenu.Visibility == Visibility.Visible)
+            {
+                FontSizeMenu.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var menuWidth = 66;
+            var menuHeight = 270;
+
+            var buttonTopLeft = Toolbar.FontSizeButtonControl
+                .TranslatePoint(
+                    new System.Windows.Point(0, 0),
+                    RootGrid);
+            var toolbarLeft = Toolbar.Margin.Left;
+            var toolbarTop = Toolbar.Margin.Top;
+            var toolbarBottom = toolbarTop + Toolbar.ActualHeight;
+
+            var x = buttonTopLeft.X;
+            var y = toolbarBottom + 8;
+
+            if (y + menuHeight > RootGrid.ActualHeight - 8)
+                y = toolbarTop - menuHeight - 8;
+
+            x = Math.Clamp(
+                x,
+                8,
+                Math.Max(8, RootGrid.ActualWidth - menuWidth - 8));
+            y = Math.Clamp(
+                y,
+                8,
+                Math.Max(8, RootGrid.ActualHeight - menuHeight - 8));
+
+            Canvas.SetLeft(FontSizeMenu, x);
+            Canvas.SetTop(FontSizeMenu, y);
+            FontSizeMenu.Visibility = Visibility.Visible;
+        }
+
+        private void FontSizeMenuItem_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            if (sender is not WpfButton button ||
+                !double.TryParse(
+                    button.Tag as string,
+                    out var fontSize))
+            {
+                return;
+            }
+
+            Toolbar.SetFontSize(fontSize);
+            FontSizeMenu.Visibility = Visibility.Collapsed;
         }
 
         private void BeginTextEntry(System.Windows.Point start)
@@ -606,6 +817,13 @@ namespace ScreenBoxDrawer
         {
             if (e.Key == Key.Escape)
             {
+                if (FontSizeMenu.Visibility == Visibility.Visible)
+                {
+                    FontSizeMenu.Visibility = Visibility.Collapsed;
+                    e.Handled = true;
+                    return;
+                }
+
                 Close();
                 e.Handled = true;
             }
@@ -630,7 +848,20 @@ namespace ScreenBoxDrawer
 
                 foreach (var child in MarkupCanvas.Children)
                 {
-                    if (child is WpfTextBlock textBlock)
+                    if (child is WpfImage mosaicImage)
+                    {
+                        var left = Canvas.GetLeft(mosaicImage);
+                        var top = Canvas.GetTop(mosaicImage);
+                        var imageRect = new System.Windows.Rect(
+                            (left - _selection.Left) * scaleX,
+                            (top - _selection.Top) * scaleY,
+                            mosaicImage.Width * scaleX,
+                            mosaicImage.Height * scaleY);
+                        context.DrawImage(
+                            mosaicImage.Source,
+                            imageRect);
+                    }
+                    else if (child is WpfTextBlock textBlock)
                     {
                         var textBrush = textBlock.Foreground as MediaBrush
                             ?? System.Windows.Media.Brushes.Black;
@@ -1029,6 +1260,18 @@ namespace ScreenBoxDrawer
             while (source != null)
             {
                 if (ReferenceEquals(source, Toolbar))
+                    return true;
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return false;
+        }
+
+        private bool IsFontSizeMenuSource(DependencyObject? source)
+        {
+            while (source != null)
+            {
+                if (ReferenceEquals(source, FontSizeMenu))
                     return true;
                 source = VisualTreeHelper.GetParent(source);
             }

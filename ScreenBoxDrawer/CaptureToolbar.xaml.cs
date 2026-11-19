@@ -14,6 +14,7 @@ namespace ScreenBoxDrawer
         public event EventHandler? BoxRequested;
         public event EventHandler? CircleRequested;
         public event EventHandler? BrushRequested;
+        public event EventHandler? MosaicRequested;
         public event EventHandler? TextRequested;
         public event EventHandler? UndoRequested;
         public event EventHandler? CopyRequested;
@@ -22,6 +23,7 @@ namespace ScreenBoxDrawer
         public event EventHandler<CaptureThicknessChangedEventArgs>? ThicknessChanged;
         public event EventHandler<CaptureFontSizeChangedEventArgs>? FontSizeChanged;
         public event EventHandler<CaptureColorChangedEventArgs>? ColorChanged;
+        public event EventHandler? FontSizeMenuRequested;
 
         public CaptureToolbar()
         {
@@ -42,6 +44,17 @@ namespace ScreenBoxDrawer
         public double TextFontSize { get; private set; }
         public MediaColor SelectedColor { get; private set; }
 
+        public WpfButton FontSizeButtonControl => FontSizeButton;
+
+        public void SetFontSize(double fontSize)
+        {
+            TextFontSize = fontSize;
+            FontSizeButtonText.Text = $"{fontSize:0} pt";
+            FontSizeChanged?.Invoke(
+                this,
+                new CaptureFontSizeChangedEventArgs(fontSize));
+        }
+
         public void SetSelectedTool(CaptureMarkupTool tool)
         {
             SetToolButtonSelected(LineButton, tool == CaptureMarkupTool.Line);
@@ -49,6 +62,7 @@ namespace ScreenBoxDrawer
             SetToolButtonSelected(BoxButton, tool == CaptureMarkupTool.Box);
             SetToolButtonSelected(CircleButton, tool == CaptureMarkupTool.Circle);
             SetToolButtonSelected(BrushButton, tool == CaptureMarkupTool.Brush);
+            SetToolButtonSelected(MosaicButton, tool == CaptureMarkupTool.Mosaic);
             SetToolButtonSelected(TextButton, tool == CaptureMarkupTool.Text);
         }
 
@@ -83,6 +97,7 @@ namespace ScreenBoxDrawer
             ConfigureLocalTooltip(ArrowButton, "Arrow");
             ConfigureLocalTooltip(LineButton, "Line");
             ConfigureLocalTooltip(BrushButton, "Brush");
+            ConfigureLocalTooltip(MosaicButton, "Mosaic");
             ConfigureLocalTooltip(TextButton, "Text");
             ConfigureLocalTooltip(UndoButton, "Undo");
             ConfigureLocalTooltip(CopyIconButton, "Copy to clipboard");
@@ -158,6 +173,11 @@ namespace ScreenBoxDrawer
             BrushRequested?.Invoke(this, EventArgs.Empty);
         }
 
+        private void MosaicButton_Click(object sender, RoutedEventArgs e)
+        {
+            MosaicRequested?.Invoke(this, EventArgs.Empty);
+        }
+
         private void TextButton_Click(object sender, RoutedEventArgs e)
         {
             TextRequested?.Invoke(this, EventArgs.Empty);
@@ -193,23 +213,9 @@ namespace ScreenBoxDrawer
                 new CaptureThicknessChangedEventArgs(e.NewValue));
         }
 
-        private void FontSizeCombo_SelectionChanged(
-            object sender,
-            SelectionChangedEventArgs e)
+        private void FontSizeButton_Click(object sender, RoutedEventArgs e)
         {
-            if (FontSizeCombo.SelectedItem is not ComboBoxItem item ||
-                item.Content is not string text ||
-                !double.TryParse(
-                    text.Replace(" pt", string.Empty),
-                    out var fontSize))
-            {
-                return;
-            }
-
-            TextFontSize = fontSize;
-            FontSizeChanged?.Invoke(
-                this,
-                new CaptureFontSizeChangedEventArgs(fontSize));
+            FontSizeMenuRequested?.Invoke(this, EventArgs.Empty);
         }
 
         private void ColorButton_Click(object sender, RoutedEventArgs e)
@@ -247,6 +253,7 @@ namespace ScreenBoxDrawer
         Box,
         Circle,
         Brush,
+        Mosaic,
         Text
     }
 
