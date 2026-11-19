@@ -1,5 +1,6 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -17,7 +18,11 @@ using WpfEllipse = System.Windows.Shapes.Ellipse;
 using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
 using WpfLine = System.Windows.Shapes.Line;
 using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
+using WpfPath = System.Windows.Shapes.Path;
+using WpfPolyline = System.Windows.Shapes.Polyline;
 using WpfRectangle = System.Windows.Shapes.Rectangle;
+using WpfTextBlock = System.Windows.Controls.TextBlock;
+using WpfTextBox = System.Windows.Controls.TextBox;
 
 namespace ScreenBoxDrawer
 {
@@ -32,19 +37,49 @@ namespace ScreenBoxDrawer
         private System.Windows.Rect _selection;
         private DrawingRectangle _selectionPixels;
         private Shape? _activeMarkup;
+        private WpfTextBox? _activeTextBox;
         private bool _isSelecting;
         private bool _isMarking;
         private CapturePhase _phase = CapturePhase.Select;
         private CaptureMarkupTool _markupTool = CaptureMarkupTool.Line;
+        private double _drawingThickness = 3;
+        private double _textFontSize = 16;
+        private System.Windows.Media.Color _captureColor =
+            System.Windows.Media.Colors.Red;
 
         public CaptureWindow()
         {
             InitializeComponent();
             Toolbar.LineRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Line);
+            Toolbar.ArrowRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Arrow);
             Toolbar.BoxRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Box);
             Toolbar.CircleRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Circle);
+            Toolbar.BrushRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Brush);
+            Toolbar.TextRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Text);
+            Toolbar.UndoRequested += UndoMarkup;
             Toolbar.CopyRequested += CopyButton_Click;
             Toolbar.CloseRequested += CloseButton_Click;
+            Toolbar.FinishRequested += FinishButton_Click;
+            Toolbar.ThicknessChanged += (_, args) =>
+            {
+                _drawingThickness = args.Thickness;
+                Toolbar.StatusText = $"Drawing thickness: {args.Thickness:0}";
+            };
+            Toolbar.FontSizeChanged += (_, args) =>
+            {
+                _textFontSize = args.FontSize;
+                if (_activeTextBox != null)
+                    _activeTextBox.FontSize = args.FontSize;
+                Toolbar.StatusText = $"Text size: {args.FontSize:0} pt";
+            };
+            Toolbar.ColorChanged += (_, args) =>
+            {
+                _captureColor = args.Color;
+                if (_activeTextBox != null)
+                    _activeTextBox.Foreground =
+                        new SolidColorBrush(args.Color);
+                Toolbar.StatusText = "Color changed";
+            };
             (_desktopImage, _screenBounds) = CaptureDesktop();
             _imagePixelWidth = _desktopImage.PixelWidth;
             _imagePixelHeight = _desktopImage.PixelHeight;
@@ -79,6 +114,9 @@ namespace ScreenBoxDrawer
             if (IsToolbarSource(e.OriginalSource as DependencyObject))
                 return;
 
+            if (IsActiveTextEntrySource(e.OriginalSource as DependencyObject))
+                return;
+
             if (_phase == CapturePhase.Select)
             {
                 _dragStart = ClampToWindow(e.GetPosition(RootGrid));
@@ -90,9 +128,18 @@ namespace ScreenBoxDrawer
             else if (_markupTool != CaptureMarkupTool.None)
             {
                 _dragStart = ClampToSelection(e.GetPosition(RootGrid));
+                if (_markupTool == CaptureMarkupTool.Text)
+                {
+                    BeginTextEntry(_dragStart);
+                    e.Handled = true;
+                    return;
+                }
+
                 _isMarking = true;
                 _activeMarkup = CreateMarkup(_dragStart);
                 MarkupCanvas.Children.Add(_activeMarkup);
+                if (_activeMarkup is WpfPolyline brush)
+                    brush.Points.Add(_dragStart);
                 RootGrid.CaptureMouse();
             }
 
@@ -109,10 +156,19 @@ namespace ScreenBoxDrawer
             }
             else if (_isMarking && _activeMarkup != null)
             {
-                UpdateMarkup(
-                    _activeMarkup,
-                    _dragStart,
-                    ClampToSelection(e.GetPosition(RootGrid)));
+                var end = ClampToSelection(e.GetPosition(RootGrid));
+                if (_activeMarkup is WpfPolyline brush)
+                {
+                    if (brush.Points.Count == 0 ||
+                        Distance(brush.Points[^1], end) >= 1)
+                    {
+                        brush.Points.Add(end);
+                    }
+                }
+                else
+                {
+                    UpdateMarkup(_activeMarkup, _dragStart, end);
+                }
             }
         }
 
@@ -135,8 +191,20 @@ namespace ScreenBoxDrawer
                 _isMarking = false;
                 RootGrid.ReleaseMouseCapture();
                 var end = ClampToSelection(e.GetPosition(RootGrid));
-                UpdateMarkup(_activeMarkup, _dragStart, end);
-                if (IsDegenerateMarkup(_activeMarkup))
+                if (_activeMarkup is WpfPolyline brush)
+                {
+                    if (brush.Points.Count == 0 ||
+                        Distance(brush.Points[^1], end) >= 1)
+                    {
+                        brush.Points.Add(end);
+                    }
+                }
+                else
+                {
+                    UpdateMarkup(_activeMarkup, _dragStart, end);
+                }
+
+                if (IsDegenerateMarkup(_activeMarkup, end))
                     MarkupCanvas.Children.Remove(_activeMarkup);
                 _activeMarkup = null;
             }
@@ -176,13 +244,15 @@ namespace ScreenBoxDrawer
 
         private Shape CreateMarkup(System.Windows.Point start)
         {
-            var stroke = new SolidColorBrush(System.Windows.Media.Colors.Red);
+            var stroke = new SolidColorBrush(_captureColor);
             if (_markupTool == CaptureMarkupTool.Line)
             {
                 return new WpfLine
                 {
                     Stroke = stroke,
-                    StrokeThickness = 3,
+                    StrokeThickness = _drawingThickness,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
                     X1 = start.X,
                     Y1 = start.Y,
                     X2 = start.X,
@@ -190,22 +260,111 @@ namespace ScreenBoxDrawer
                 };
             }
 
-            return _markupTool == CaptureMarkupTool.Box
-                ? new WpfRectangle
+            if (_markupTool == CaptureMarkupTool.Arrow)
+            {
+                return new WpfPath
                 {
                     Stroke = stroke,
-                    StrokeThickness = 3,
-                    Fill = System.Windows.Media.Brushes.Transparent
-                }
-                : new WpfEllipse
+                    Fill = stroke,
+                    StrokeThickness = _drawingThickness,
+                    StrokeLineJoin = PenLineJoin.Round,
+                    StrokeStartLineCap = PenLineCap.Round,
+                    StrokeEndLineCap = PenLineCap.Round,
+                    Data = CreateArrowGeometry(start, start, _drawingThickness)
+                };
+            }
+
+            if (_markupTool == CaptureMarkupTool.Box)
+            {
+                return new WpfRectangle
                 {
                     Stroke = stroke,
-                    StrokeThickness = 3,
+                    StrokeThickness = _drawingThickness,
                     Fill = System.Windows.Media.Brushes.Transparent
                 };
+            }
+
+            if (_markupTool == CaptureMarkupTool.Circle)
+            {
+                return new WpfEllipse
+                {
+                    Stroke = stroke,
+                    StrokeThickness = _drawingThickness,
+                    Fill = System.Windows.Media.Brushes.Transparent
+                };
+            }
+
+            var brushStroke = new WpfPolyline
+            {
+                Stroke = stroke,
+                StrokeThickness = _drawingThickness,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
+                StrokeLineJoin = PenLineJoin.Round,
+                Fill = System.Windows.Media.Brushes.Transparent
+            };
+            return brushStroke;
         }
 
-        private static void UpdateMarkup(
+        private static Geometry CreateArrowGeometry(
+            System.Windows.Point start,
+            System.Windows.Point end,
+            double thickness)
+        {
+            var deltaX = end.X - start.X;
+            var deltaY = end.Y - start.Y;
+            var length = Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+            if (length < 0.001)
+                return Geometry.Empty;
+
+            var unitX = deltaX / length;
+            var unitY = deltaY / length;
+            var normalX = -unitY;
+            var normalY = unitX;
+            var headLength = Math.Clamp(thickness * 4, 10, 24);
+            headLength = Math.Min(headLength, length * 0.45);
+            if (headLength < 1)
+                headLength = 1;
+
+            var basePoint = new System.Windows.Point(
+                end.X - unitX * headLength,
+                end.Y - unitY * headLength);
+            var wingOffset = headLength * 0.48;
+            var wingOne = new System.Windows.Point(
+                basePoint.X + normalX * wingOffset,
+                basePoint.Y + normalY * wingOffset);
+            var wingTwo = new System.Windows.Point(
+                basePoint.X - normalX * wingOffset,
+                basePoint.Y - normalY * wingOffset);
+
+            var group = new GeometryGroup();
+            group.Children.Add(new LineGeometry(start, end));
+
+            var figure = new PathFigure
+            {
+                StartPoint = end,
+                IsClosed = true,
+                IsFilled = true
+            };
+            figure.Segments.Add(new LineSegment(wingOne, true));
+            figure.Segments.Add(new LineSegment(wingTwo, true));
+            group.Children.Add(new PathGeometry(
+                new[] { figure },
+                FillRule.Nonzero,
+                null));
+            return group;
+        }
+
+        private static double Distance(
+            System.Windows.Point first,
+            System.Windows.Point second)
+        {
+            var deltaX = second.X - first.X;
+            var deltaY = second.Y - first.Y;
+            return Math.Sqrt(deltaX * deltaX + deltaY * deltaY);
+        }
+
+        private void UpdateMarkup(
             Shape markup,
             System.Windows.Point start,
             System.Windows.Point end)
@@ -219,6 +378,19 @@ namespace ScreenBoxDrawer
                 return;
             }
 
+            if (markup is WpfPath arrow)
+            {
+                arrow.Data = CreateArrowGeometry(start, end, _drawingThickness);
+                return;
+            }
+
+            if (markup is WpfPolyline brush)
+            {
+                if (!brush.Points.Contains(end))
+                    brush.Points.Add(end);
+                return;
+            }
+
             var left = Math.Min(start.X, end.X);
             var top = Math.Min(start.Y, end.Y);
             Canvas.SetLeft(markup, left);
@@ -227,26 +399,180 @@ namespace ScreenBoxDrawer
             markup.Height = Math.Abs(start.Y - end.Y);
         }
 
-        private static bool IsDegenerateMarkup(Shape markup)
+        private bool IsDegenerateMarkup(Shape markup, System.Windows.Point end)
         {
             if (markup is WpfLine line)
                 return Math.Abs(line.X2 - line.X1) < 2 && Math.Abs(line.Y2 - line.Y1) < 2;
+
+            if (markup is WpfPath)
+                return Distance(_dragStart, end) < 2;
+
+            if (markup is WpfPolyline brush)
+            {
+                if (brush.Points.Count < 2)
+                    return true;
+
+                var first = brush.Points[0];
+                var last = brush.Points[^1];
+                return Distance(first, last) < 1 &&
+                    brush.Points.All(point => Distance(first, point) < 1);
+            }
 
             return markup.Width < 2 || markup.Height < 2;
         }
 
         private void SetMarkupTool(CaptureMarkupTool tool)
         {
+            if (tool != CaptureMarkupTool.Text)
+                CommitActiveTextEntry();
+
             _markupTool = tool;
             Toolbar.SetSelectedTool(tool);
         }
 
-        private void CopyButton_Click(object? sender, EventArgs e)
+        private void BeginTextEntry(System.Windows.Point start)
+        {
+            CommitActiveTextEntry();
+
+            var textBox = new WpfTextBox
+            {
+                FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+                FontSize = _textFontSize,
+                Foreground = new SolidColorBrush(_captureColor),
+                Background = new SolidColorBrush(
+                    System.Windows.Media.Color.FromArgb(230, 255, 255, 255)),
+                BorderBrush = new SolidColorBrush(_captureColor),
+                BorderThickness = new Thickness(1),
+                Padding = new Thickness(4),
+                MinWidth = 80,
+                MaxWidth = Math.Max(80, _selection.Right - start.X),
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = true,
+                AcceptsTab = false
+            };
+
+            Canvas.SetLeft(textBox, start.X);
+            Canvas.SetTop(textBox, start.Y);
+            MarkupCanvas.Children.Add(textBox);
+            _activeTextBox = textBox;
+
+            textBox.KeyDown += TextEntry_KeyDown;
+            textBox.LostKeyboardFocus += TextEntry_LostKeyboardFocus;
+            Dispatcher.BeginInvoke(
+                new Action(() =>
+                {
+                    textBox.Focus();
+                    textBox.CaretIndex = textBox.Text.Length;
+                    textBox.SelectAll();
+                }),
+                System.Windows.Threading.DispatcherPriority.Input);
+        }
+
+        private void TextEntry_KeyDown(object sender, WpfKeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                if ((Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift)
+                    return;
+
+                CommitActiveTextEntry();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Escape)
+            {
+                CancelActiveTextEntry();
+                e.Handled = true;
+            }
+        }
+
+        private void TextEntry_LostKeyboardFocus(
+            object sender,
+            KeyboardFocusChangedEventArgs e)
+        {
+            if (sender is WpfTextBox textBox &&
+                ReferenceEquals(textBox, _activeTextBox))
+            {
+                CommitActiveTextEntry();
+            }
+        }
+
+        private void CommitActiveTextEntry()
+        {
+            if (_activeTextBox == null)
+                return;
+
+            var textBox = _activeTextBox;
+            _activeTextBox = null;
+
+            var text = textBox.Text.TrimEnd('\r', '\n');
+            var index = MarkupCanvas.Children.IndexOf(textBox);
+            MarkupCanvas.Children.Remove(textBox);
+
+            if (text.Length > 0)
+            {
+                var textBlock = new WpfTextBlock
+                {
+                    Text = text,
+                    FontFamily = new System.Windows.Media.FontFamily("Segoe UI"),
+                    FontSize = textBox.FontSize,
+                    FontWeight = FontWeights.Normal,
+                    Foreground = new SolidColorBrush(_captureColor),
+                    TextWrapping = TextWrapping.NoWrap,
+                    MaxWidth = Math.Max(40, _selection.Right - Canvas.GetLeft(textBox))
+                };
+                Canvas.SetLeft(textBlock, Canvas.GetLeft(textBox));
+                Canvas.SetTop(textBlock, Canvas.GetTop(textBox));
+                if (index >= 0 && index <= MarkupCanvas.Children.Count)
+                    MarkupCanvas.Children.Insert(index, textBlock);
+                else
+                    MarkupCanvas.Children.Add(textBlock);
+            }
+        }
+
+        private void CancelActiveTextEntry()
+        {
+            if (_activeTextBox == null)
+                return;
+
+            var textBox = _activeTextBox;
+            _activeTextBox = null;
+            MarkupCanvas.Children.Remove(textBox);
+        }
+
+        private void UndoMarkup(object? sender, EventArgs e)
+        {
+            if (_activeTextBox != null)
+            {
+                CancelActiveTextEntry();
+                Toolbar.StatusText = "Undid text";
+                return;
+            }
+
+            if (_isMarking && _activeMarkup != null)
+            {
+                MarkupCanvas.Children.Remove(_activeMarkup);
+                _activeMarkup = null;
+                _isMarking = false;
+                RootGrid.ReleaseMouseCapture();
+                Toolbar.StatusText = "Undid markup";
+                return;
+            }
+
+            if (MarkupCanvas.Children.Count > 0)
+            {
+                MarkupCanvas.Children.RemoveAt(
+                    MarkupCanvas.Children.Count - 1);
+                Toolbar.StatusText = "Undid markup";
+            }
+        }
+
+        private bool TryCopySelection()
         {
             try
             {
                 System.Windows.Clipboard.SetImage(RenderSelection());
                 Toolbar.StatusText = "Copied to clipboard";
+                return true;
             }
             catch (ExternalException ex)
             {
@@ -255,7 +581,20 @@ namespace ScreenBoxDrawer
                     "ScreenBoxDrawer",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
+                return false;
             }
+        }
+
+        private void CopyButton_Click(object? sender, EventArgs e)
+        {
+            TryCopySelection();
+        }
+
+        private void FinishButton_Click(object? sender, EventArgs e)
+        {
+            CommitActiveTextEntry();
+            if (TryCopySelection())
+                Close();
         }
 
         private void CloseButton_Click(object? sender, EventArgs e)
@@ -291,7 +630,74 @@ namespace ScreenBoxDrawer
 
                 foreach (var child in MarkupCanvas.Children)
                 {
-                    if (child is WpfLine line)
+                    if (child is WpfTextBlock textBlock)
+                    {
+                        var textBrush = textBlock.Foreground as MediaBrush
+                            ?? System.Windows.Media.Brushes.Black;
+                        var typeface = new Typeface(
+                            textBlock.FontFamily,
+                            textBlock.FontStyle,
+                            textBlock.FontWeight,
+                            textBlock.FontStretch);
+                        var formattedText = new FormattedText(
+                            textBlock.Text,
+                            CultureInfo.CurrentCulture,
+                            textBlock.FlowDirection,
+                            typeface,
+                            textBlock.FontSize * scaleY,
+                            textBrush,
+                            VisualTreeHelper.GetDpi(this).PixelsPerDip);
+                        context.DrawText(
+                            formattedText,
+                            ToImagePoint(
+                                Canvas.GetLeft(textBlock),
+                                Canvas.GetTop(textBlock),
+                                scaleX,
+                                scaleY));
+                    }
+                    else if (child is WpfPolyline brush)
+                    {
+                        var pen = CreatePen(
+                            brush.Stroke,
+                            brush.StrokeThickness * scaleX);
+                        for (var index = 1; index < brush.Points.Count; index++)
+                        {
+                            context.DrawLine(
+                                pen,
+                                ToImagePoint(
+                                    brush.Points[index - 1].X,
+                                    brush.Points[index - 1].Y,
+                                    scaleX,
+                                    scaleY),
+                                ToImagePoint(
+                                    brush.Points[index].X,
+                                    brush.Points[index].Y,
+                                    scaleX,
+                                    scaleY));
+                        }
+                    }
+                    else if (child is WpfPath arrow)
+                    {
+                        var pen = CreatePen(
+                            arrow.Stroke,
+                            arrow.StrokeThickness * scaleX);
+                        var geometry = arrow.Data?.Clone();
+                        if (geometry != null)
+                        {
+                            geometry.Transform = new MatrixTransform(
+                                scaleX,
+                                0,
+                                0,
+                                scaleY,
+                                -_selection.Left * scaleX,
+                                -_selection.Top * scaleY);
+                            context.DrawGeometry(
+                                arrow.Fill,
+                                pen,
+                                geometry);
+                        }
+                    }
+                    else if (child is WpfLine line)
                     {
                         var pen = CreatePen(line.Stroke, line.StrokeThickness * scaleX);
                         context.DrawLine(
@@ -496,6 +902,21 @@ namespace ScreenBoxDrawer
             while (source != null)
             {
                 if (ReferenceEquals(source, Toolbar))
+                    return true;
+                source = VisualTreeHelper.GetParent(source);
+            }
+
+            return false;
+        }
+
+        private bool IsActiveTextEntrySource(DependencyObject? source)
+        {
+            if (_activeTextBox == null)
+                return false;
+
+            while (source != null)
+            {
+                if (ReferenceEquals(source, _activeTextBox))
                     return true;
                 source = VisualTreeHelper.GetParent(source);
             }

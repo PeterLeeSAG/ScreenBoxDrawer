@@ -14,7 +14,11 @@ foreground.
 - Draw rounded boxes over the desktop.
 - Draw arrows from a tail point to a tip point.
 - Capture and freeze a rectangular area of the virtual desktop.
-- Annotate a frozen capture with lines, boxes, and circles.
+- Annotate a frozen capture with lines, arrows, boxes, circles, brushes, and
+  text.
+- Undo the most recent captured markup.
+- Choose drawing thickness and text font size from the capture toolbar.
+- Choose markup colors from the capture toolbar.
 - Copy an annotated capture to the clipboard.
 - Display multiple drawings at the same time.
 - Automatically remove drawings after a configurable duration.
@@ -74,9 +78,13 @@ while the rest of the virtual desktop stays dimmed. A toolbar appears around
 the selection, below it when there is room and above or beside it when the
 selection is near an edge.
 
-Choose **Line**, **Box**, or **Circle**, drag inside the frozen image, and use
-**Copy** to place the annotated capture on the clipboard. Press **Escape** or
-choose **Close** to leave capture mode.
+Choose **Line**, **Arrow**, **Box**, **Circle**, **Brush**, or **Text**,
+adjust drawing thickness and text size, and select a color in the toolbar.
+Drag inside the frozen image to draw. For text, click inside the capture and
+type, then press Enter or move focus away to place the text. Use **Undo** to
+remove the latest markup. Use **Copy** or the app icon to place the annotated
+capture on the clipboard. Press **Escape** or choose **Close** to leave capture
+mode.
 
 ## Configure the application
 

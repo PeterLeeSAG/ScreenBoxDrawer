@@ -18,15 +18,22 @@ support, demonstrations, and screen recordings.
    moment. The rest of the desktop remains dimmed.
 5. Choose a markup tool and drag inside the selected image:
    - **Line** draws a straight line.
+   - **Arrow** draws a shaft and arrowhead.
    - **Box** draws a rectangular outline.
    - **Circle** draws an ellipse outline.
+   - **Brush** draws freehand strokes.
+   - **Text** inserts text by clicking inside the capture and typing.
+   - **Undo** removes the latest active or committed markup.
+   - The toolbar provides drawing thickness, text font size, and color
+     controls.
    The toolbar is placed below the selected rectangle first. If that space is
    too close to the bottom edge, it moves above the rectangle and then to a
    side if necessary.
 6. Markup is clipped to the selected rectangle and remains on the frozen
    image.
-7. **Copy** places the selected image and its markup on the clipboard.
-   **Close** exits capture mode without changing the desktop.
+7. **Copy** or the app-image icon places the selected image and its markup on
+   the clipboard. The green check copies and closes capture mode. **Close**
+   exits capture mode without changing the desktop.
 
 Press **Escape** at any time to cancel capture mode and discard the current
 selection and markup.

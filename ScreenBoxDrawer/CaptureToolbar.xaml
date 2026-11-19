@@ -6,35 +6,300 @@
             Background="#FFF8F8F8"
             BorderBrush="#55000000"
             BorderThickness="1"
-            CornerRadius="6">
-        <StackPanel Orientation="Horizontal">
-            <TextBlock x:Name="StatusTextBlock"
-                       Text="Choose a markup tool"
-                       VerticalAlignment="Center"
-                       Foreground="#333333"
-                       Margin="4,0,10,0"/>
-            <Button x:Name="LineButton"
-                    Content="Line"
-                    Padding="12,6"
-                    Margin="0,0,4,0"
-                    Click="LineButton_Click"/>
-            <Button x:Name="BoxButton"
-                    Content="Box"
-                    Padding="12,6"
-                    Margin="0,0,4,0"
-                    Click="BoxButton_Click"/>
-            <Button x:Name="CircleButton"
-                    Content="Circle"
-                    Padding="12,6"
-                    Margin="0,0,12,0"
-                    Click="CircleButton_Click"/>
-            <Button Content="Copy"
-                    Padding="12,6"
-                    Margin="0,0,4,0"
-                    Click="CopyButton_Click"/>
-            <Button Content="Close"
-                    Padding="12,6"
-                    Click="CloseButton_Click"/>
-        </StackPanel>
+            CornerRadius="8"
+            ClipToBounds="False">
+        <Grid x:Name="ToolbarRoot"
+              ClipToBounds="False">
+            <StackPanel>
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Center">
+                <Button x:Name="BoxButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="7"
+                        Click="BoxButton_Click">
+                    <Border Width="22" Height="18"
+                            BorderBrush="#555555"
+                            BorderThickness="2"/>
+                </Button>
+                <Button x:Name="CircleButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="7"
+                        Click="CircleButton_Click">
+                    <Ellipse Width="21" Height="21"
+                             Stroke="#555555"
+                             StrokeThickness="2"/>
+                </Button>
+                <Button x:Name="ArrowButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="7"
+                        Click="ArrowButton_Click">
+                    <Viewbox>
+                        <Canvas Width="24" Height="24">
+                            <Line X1="3" Y1="20" X2="20" Y2="3"
+                                  Stroke="#555555" StrokeThickness="1.8"/>
+                            <Line X1="12" Y1="3" X2="20" Y2="3"
+                                  Stroke="#555555" StrokeThickness="1.8"/>
+                            <Line X1="20" Y1="3" X2="20" Y2="11"
+                                  Stroke="#555555" StrokeThickness="1.8"/>
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+                <Button x:Name="LineButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="7"
+                        Click="LineButton_Click">
+                    <Viewbox>
+                        <Canvas Width="24" Height="24">
+                            <Line X1="3" Y1="20" X2="20" Y2="3"
+                                  Stroke="#555555" StrokeThickness="2"/>
+                            <Ellipse Canvas.Left="2" Canvas.Top="18"
+                                     Width="4" Height="4"
+                                     Fill="#555555"/>
+                            <Ellipse Canvas.Left="18" Canvas.Top="2"
+                                     Width="4" Height="4"
+                                     Fill="#555555"/>
+                        </Canvas>
+                    </Viewbox>
+                </Button>
+                <Button x:Name="BrushButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="BrushButton_Click">
+                    <TextBlock Text="✎"
+                               FontSize="22"
+                               Foreground="#555555"
+                               VerticalAlignment="Center"/>
+                </Button>
+                <Button x:Name="TextButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="TextButton_Click">
+                    <TextBlock Text="T"
+                               FontSize="22"
+                               FontWeight="SemiBold"
+                               Foreground="#555555"
+                               VerticalAlignment="Center"/>
+                </Button>
+
+                <Border Width="1" Height="26"
+                        Margin="8,4"
+                        Background="#D0D0D0"/>
+
+                <Button x:Name="UndoButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="UndoButton_Click">
+                    <TextBlock Text="↶"
+                               FontSize="24"
+                               Foreground="#555555"
+                               VerticalAlignment="Center"/>
+                </Button>
+                <Button x:Name="CopyIconButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="CopyButton_Click">
+                    <TextBlock Text="↓"
+                               FontSize="24"
+                               Foreground="#555555"
+                               VerticalAlignment="Center"/>
+                </Button>
+                <Button x:Name="CloseButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="CloseButton_Click">
+                    <TextBlock Text="×"
+                               FontSize="26"
+                               FontWeight="SemiBold"
+                               Foreground="#E53935"
+                               VerticalAlignment="Center"/>
+                </Button>
+                <Button x:Name="FinishButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="FinishButton_Click">
+                    <TextBlock Text="✓"
+                               FontSize="24"
+                               FontWeight="SemiBold"
+                               Foreground="#43A047"
+                               VerticalAlignment="Center"/>
+                </Button>
+            </StackPanel>
+
+            <Grid Margin="4,6,4,0">
+                <Grid.Resources>
+                    <Style x:Key="ColorButtonStyle" TargetType="Button">
+                        <Setter Property="Width" Value="28"/>
+                        <Setter Property="Height" Value="28"/>
+                        <Setter Property="Padding" Value="3"/>
+                        <Setter Property="Margin" Value="2"/>
+                        <Setter Property="BorderBrush" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="2"/>
+                    </Style>
+                </Grid.Resources>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="300"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="38"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal"
+                            Grid.Column="0"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="Size"
+                               Width="34"
+                               VerticalAlignment="Center"
+                               Foreground="#555555"/>
+                    <ComboBox x:Name="FontSizeCombo"
+                              Width="66"
+                              Height="30"
+                              SelectedIndex="2"
+                              VerticalAlignment="Center"
+                              SelectionChanged="FontSizeCombo_SelectionChanged">
+                        <ComboBoxItem Content="12 pt"/>
+                        <ComboBoxItem Content="14 pt"/>
+                        <ComboBoxItem Content="16 pt"/>
+                        <ComboBoxItem Content="18 pt"/>
+                        <ComboBoxItem Content="20 pt"/>
+                        <ComboBoxItem Content="24 pt"/>
+                        <ComboBoxItem Content="30 pt"/>
+                        <ComboBoxItem Content="36 pt"/>
+                        <ComboBoxItem Content="48 pt"/>
+                    </ComboBox>
+                    <TextBlock Text="Thickness"
+                               Margin="8,0,0,0"
+                               Width="58"
+                               VerticalAlignment="Center"
+                               Foreground="#555555"/>
+                    <Slider x:Name="ThicknessSlider"
+                            Width="72"
+                            Minimum="1"
+                            Maximum="12"
+                            Value="3"
+                            IsSnapToTickEnabled="True"
+                            TickFrequency="1"
+                            VerticalAlignment="Center"
+                            ValueChanged="ThicknessSlider_ValueChanged"/>
+                </StackPanel>
+
+                <StackPanel x:Name="ColorPalette"
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <Button x:Name="RedColorButton"
+                            Style="{StaticResource ColorButtonStyle}"
+                            BorderBrush="#1976D2"
+                            Tag="Red"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FFFF2020"
+                                BorderBrush="#E02020"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                    <Button Style="{StaticResource ColorButtonStyle}"
+                            Tag="Yellow"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FFFFD600"
+                                BorderBrush="#D9B900"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                    <Button Style="{StaticResource ColorButtonStyle}"
+                            Tag="Blue"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FF1687F8"
+                                BorderBrush="#0870D8"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                    <Button Style="{StaticResource ColorButtonStyle}"
+                            Tag="Green"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FF36A852"
+                                BorderBrush="#24843C"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                    <Button Style="{StaticResource ColorButtonStyle}"
+                            Tag="Black"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FF202020"
+                                BorderBrush="#101010"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                    <Button Style="{StaticResource ColorButtonStyle}"
+                            Tag="Gray"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FF9E9E9E"
+                                BorderBrush="#7E7E7E"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                    <Button Style="{StaticResource ColorButtonStyle}"
+                            Tag="White"
+                            Click="ColorButton_Click">
+                        <Border Width="20" Height="20"
+                                SnapsToDevicePixels="True"
+                                Background="#FFFFFFFF"
+                                BorderBrush="#CCCCCC"
+                                BorderThickness="1"
+                                CornerRadius="3"/>
+                    </Button>
+                </StackPanel>
+
+                <Button x:Name="AppIconButton"
+                        Grid.Column="2"
+                        Width="34" Height="34"
+                        Padding="3"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Click="CopyButton_Click">
+                    <Image Source="pack://application:,,,/Assets/screenboxdrawer.png"
+                           Stretch="Uniform"/>
+                </Button>
+            </Grid>
+            </StackPanel>
+
+            <Border x:Name="CustomTooltip"
+                    Visibility="Collapsed"
+                    IsHitTestVisible="False"
+                    Panel.ZIndex="100"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Padding="7,4"
+                    Background="#FF2D2D2D"
+                    BorderBrush="#FF191919"
+                    BorderThickness="1"
+                    CornerRadius="3">
+                <TextBlock x:Name="CustomTooltipText"
+                           FontSize="12"
+                           Foreground="White"/>
+            </Border>
+        </Grid>
     </Border>
 </UserControl>

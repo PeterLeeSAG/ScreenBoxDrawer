@@ -39,7 +39,7 @@
         </Canvas>
         <Canvas x:Name="MarkupCanvas"
                 Panel.ZIndex="30"
-                IsHitTestVisible="False"/>
+                IsHitTestVisible="True"/>
 
         <local:CaptureToolbar x:Name="Toolbar"
                 HorizontalAlignment="Left"
