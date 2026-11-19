@@ -140,6 +140,25 @@
                                Foreground="#555555"
                                VerticalAlignment="Center"/>
                 </Button>
+                <Button x:Name="SaveButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="SaveButton_Click">
+                    <TextBlock Text="💾"
+                               FontSize="18"
+                               VerticalAlignment="Center"/>
+                </Button>
+                <Button x:Name="SaveAsButton"
+                        Width="40" Height="38"
+                        Margin="2,0"
+                        Padding="6"
+                        Click="SaveAsButton_Click">
+                    <TextBlock Text="▤"
+                               FontSize="20"
+                               Foreground="#555555"
+                               VerticalAlignment="Center"/>
+                </Button>
                 <Button x:Name="CloseButton"
                         Width="40" Height="38"
                         Margin="2,0"

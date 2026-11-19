@@ -18,6 +18,8 @@ namespace ScreenBoxDrawer
         public event EventHandler? TextRequested;
         public event EventHandler? UndoRequested;
         public event EventHandler? CopyRequested;
+        public event EventHandler? SaveRequested;
+        public event EventHandler? SaveAsRequested;
         public event EventHandler? CloseRequested;
         public event EventHandler? FinishRequested;
         public event EventHandler<CaptureThicknessChangedEventArgs>? ThicknessChanged;
@@ -101,6 +103,8 @@ namespace ScreenBoxDrawer
             ConfigureLocalTooltip(TextButton, "Text");
             ConfigureLocalTooltip(UndoButton, "Undo");
             ConfigureLocalTooltip(CopyIconButton, "Copy to clipboard");
+            ConfigureLocalTooltip(SaveButton, "Save");
+            ConfigureLocalTooltip(SaveAsButton, "Save As");
             ConfigureLocalTooltip(CloseButton, "Close");
             ConfigureLocalTooltip(FinishButton, "Copy and close");
             ConfigureLocalTooltip(AppIconButton, "Copy to clipboard");
@@ -191,6 +195,16 @@ namespace ScreenBoxDrawer
         private void CopyButton_Click(object sender, RoutedEventArgs e)
         {
             CopyRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void SaveButton_Click(object sender, RoutedEventArgs e)
+        {
+            SaveRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void SaveAsButton_Click(object sender, RoutedEventArgs e)
+        {
+            SaveAsRequested?.Invoke(this, EventArgs.Empty);
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)

@@ -41,12 +41,16 @@
                 Panel.ZIndex="30"
                 IsHitTestVisible="True"/>
 
-        <local:CaptureToolbar x:Name="Toolbar"
-                HorizontalAlignment="Left"
-                VerticalAlignment="Top"
+        <Canvas x:Name="ToolbarHost"
                 Panel.ZIndex="100"
-                Visibility="Collapsed">
-        </local:CaptureToolbar>
+                IsHitTestVisible="True"
+                ClipToBounds="False">
+            <local:CaptureToolbar x:Name="Toolbar"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Visibility="Collapsed">
+            </local:CaptureToolbar>
+        </Canvas>
         <Canvas x:Name="FontSizeMenuHost"
                 Panel.ZIndex="200"
                 IsHitTestVisible="True"

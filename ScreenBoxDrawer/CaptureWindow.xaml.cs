@@ -24,6 +24,7 @@ using WpfRectangle = System.Windows.Shapes.Rectangle;
 using WpfTextBlock = System.Windows.Controls.TextBlock;
 using WpfTextBox = System.Windows.Controls.TextBox;
 using WpfButton = System.Windows.Controls.Button;
+using FormsSaveFileDialog = System.Windows.Forms.SaveFileDialog;
 using WpfImage = System.Windows.Controls.Image;
 
 namespace ScreenBoxDrawer
@@ -48,11 +49,18 @@ namespace ScreenBoxDrawer
         private double _textFontSize = 16;
         private System.Windows.Media.Color _captureColor =
             System.Windows.Media.Colors.Red;
+        private readonly string _captureSaveFolder;
+        private string? _lastSavedPath;
 
 
-        public CaptureWindow()
+        public CaptureWindow(AppSettings settings)
         {
             InitializeComponent();
+            _captureSaveFolder =
+                string.IsNullOrWhiteSpace(settings.CaptureSaveFolder)
+                    ? Environment.GetFolderPath(
+                        Environment.SpecialFolder.MyPictures)
+                    : settings.CaptureSaveFolder;
             Toolbar.LineRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Line);
             Toolbar.ArrowRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Arrow);
             Toolbar.BoxRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Box);
@@ -62,6 +70,8 @@ namespace ScreenBoxDrawer
             Toolbar.TextRequested += (_, _) => SetMarkupTool(CaptureMarkupTool.Text);
             Toolbar.UndoRequested += UndoMarkup;
             Toolbar.CopyRequested += CopyButton_Click;
+            Toolbar.SaveRequested += SaveButton_Click;
+            Toolbar.SaveAsRequested += SaveAsButton_Click;
             Toolbar.CloseRequested += CloseButton_Click;
             Toolbar.FinishRequested += FinishButton_Click;
             Toolbar.ThicknessChanged += (_, args) =>
@@ -601,8 +611,8 @@ namespace ScreenBoxDrawer
                 .TranslatePoint(
                     new System.Windows.Point(0, 0),
                     RootGrid);
-            var toolbarLeft = Toolbar.Margin.Left;
-            var toolbarTop = Toolbar.Margin.Top;
+            var toolbarLeft = Canvas.GetLeft(Toolbar);
+            var toolbarTop = Canvas.GetTop(Toolbar);
             var toolbarBottom = toolbarTop + Toolbar.ActualHeight;
 
             var x = buttonTopLeft.X;
@@ -799,6 +809,102 @@ namespace ScreenBoxDrawer
         private void CopyButton_Click(object? sender, EventArgs e)
         {
             TryCopySelection();
+        }
+
+        private void SaveButton_Click(object? sender, EventArgs e)
+        {
+            TrySaveCapture(false);
+        }
+
+        private void SaveAsButton_Click(object? sender, EventArgs e)
+        {
+            TrySaveCapture(true);
+        }
+
+        private void TrySaveCapture(bool saveAs)
+        {
+            CommitActiveTextEntry();
+            var image = RenderSelection();
+            var path = saveAs
+                ? ChooseSaveAsPath()
+                : ChooseDefaultSavePath();
+
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            try
+            {
+                var directory = System.IO.Path.GetDirectoryName(path);
+                if (!string.IsNullOrWhiteSpace(directory))
+                    Directory.CreateDirectory(directory);
+
+                var encoder = new PngBitmapEncoder();
+                encoder.Frames.Add(BitmapFrame.Create(image));
+                using var stream = File.Create(path);
+                encoder.Save(stream);
+
+                _lastSavedPath = path;
+                Toolbar.StatusText = $"Saved: {System.IO.Path.GetFileName(path)}";
+            }
+            catch (Exception ex) when (
+                ex is IOException ||
+                ex is UnauthorizedAccessException ||
+                ex is System.Security.SecurityException)
+            {
+                System.Windows.MessageBox.Show(
+                    $"The captured image could not be saved.\n\n{ex.Message}",
+                    "ScreenBoxDrawer",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+
+        private string? ChooseDefaultSavePath()
+        {
+            if (!string.IsNullOrWhiteSpace(_lastSavedPath))
+                return _lastSavedPath;
+
+            var directory = _captureSaveFolder;
+            if (string.IsNullOrWhiteSpace(directory))
+                directory = Environment.GetFolderPath(
+                    Environment.SpecialFolder.MyPictures);
+
+            try
+            {
+                Directory.CreateDirectory(directory);
+            }
+            catch
+            {
+            }
+
+            var timestamp = DateTime.Now.ToString(
+                "yyyyMMdd-HHmmss",
+                CultureInfo.InvariantCulture);
+            return System.IO.Path.Combine(directory, $"ScreenBoxDrawer-{timestamp}.png");
+        }
+
+        private string? ChooseSaveAsPath()
+        {
+            using var dialog = new FormsSaveFileDialog
+            {
+                Title = "Save captured screenshot",
+                Filter = "PNG image (*.png)|*.png",
+                DefaultExt = "png",
+                AddExtension = true,
+                InitialDirectory =
+                    Directory.Exists(_captureSaveFolder)
+                        ? _captureSaveFolder
+                        : Environment.GetFolderPath(
+                            Environment.SpecialFolder.MyPictures),
+                FileName =
+                    !string.IsNullOrWhiteSpace(_lastSavedPath)
+                        ? System.IO.Path.GetFileName(_lastSavedPath)
+                        : $"ScreenBoxDrawer-{DateTime.Now:yyyyMMdd-HHmmss}.png"
+            };
+
+            return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK
+                ? dialog.FileName
+                : null;
         }
 
         private void FinishButton_Click(object? sender, EventArgs e)
@@ -1023,11 +1129,8 @@ namespace ScreenBoxDrawer
 
             Toolbar.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
             Toolbar.VerticalAlignment = System.Windows.VerticalAlignment.Top;
-            Toolbar.Margin = new Thickness(0);
             Toolbar.Visibility = Visibility.Visible;
-            Toolbar.IsHitTestVisible = true;
             Toolbar.InvalidateMeasure();
-            Toolbar.InvalidateArrange();
             Toolbar.Measure(new System.Windows.Size(
                 double.PositiveInfinity,
                 double.PositiveInfinity));
@@ -1044,148 +1147,130 @@ namespace ScreenBoxDrawer
             if (toolbarHeight <= 0)
                 toolbarHeight = 88;
 
-            var x = _selection.Left + (_selection.Width - toolbarWidth) / 2;
-            var y = _selection.Bottom + gap;
+            var selectionCenter = new System.Windows.Point(
+                _selection.Left + _selection.Width / 2,
+                _selection.Top + _selection.Height / 2);
+            var selectionCenterScreen = RootGrid.PointToScreen(selectionCenter);
+            var selectionMonitor = System.Windows.Forms.Screen.FromPoint(
+                new DrawingPoint(
+                    (int)Math.Round(selectionCenterScreen.X),
+                    (int)Math.Round(selectionCenterScreen.Y)));
 
-            if (y + toolbarHeight <= RootGrid.ActualHeight - edgeMargin)
+            var x = _selection.Left + (_selection.Width - toolbarWidth) / 2;
+            var maxX = Math.Max(
+                edgeMargin,
+                RootGrid.ActualWidth - toolbarWidth - edgeMargin);
+            x = Math.Clamp(x, edgeMargin, maxX);
+
+            var belowY = _selection.Bottom + gap;
+            var belowPoint = new System.Windows.Point(
+                selectionCenter.X,
+                belowY + toolbarHeight);
+            var belowScreenPoint = RootGrid.PointToScreen(belowPoint);
+            if (belowScreenPoint.Y <=
+                selectionMonitor.WorkingArea.Bottom - edgeMargin)
             {
-                // First choice: below the capture area.
+            Canvas.SetLeft(Toolbar, x);
+            Canvas.SetTop(Toolbar, belowY);
             }
             else
             {
                 var aboveY = _selection.Top - toolbarHeight - gap;
-                if (aboveY >= edgeMargin)
+                var abovePoint = new System.Windows.Point(
+                    selectionCenter.X,
+                    aboveY);
+                var aboveScreenPoint = RootGrid.PointToScreen(abovePoint);
+
+                if (aboveScreenPoint.Y >=
+                    selectionMonitor.WorkingArea.Top + edgeMargin)
                 {
-                    y = aboveY;
+                    Canvas.SetLeft(Toolbar, x);
+                    Canvas.SetTop(Toolbar, aboveY);
                 }
                 else
                 {
                     var rightX = _selection.Right + gap;
-                    if (rightX + toolbarWidth <= RootGrid.ActualWidth - edgeMargin)
+                    var rightPoint = new System.Windows.Point(
+                        rightX + toolbarWidth,
+                        _selection.Top + toolbarHeight);
+                    var rightScreenPoint = RootGrid.PointToScreen(rightPoint);
+                    if (rightScreenPoint.X <=
+                        selectionMonitor.WorkingArea.Right - edgeMargin)
                     {
-                        x = rightX;
-                        y = _selection.Top;
+                        var sideY = Math.Clamp(
+                            _selection.Top,
+                            edgeMargin,
+                            Math.Max(
+                                edgeMargin,
+                                RootGrid.ActualHeight - toolbarHeight - edgeMargin));
+                        Canvas.SetLeft(Toolbar, rightX);
+                        Canvas.SetTop(Toolbar, sideY);
                     }
                     else
                     {
                         var leftX = _selection.Left - toolbarWidth - gap;
                         if (leftX >= edgeMargin)
                         {
-                            x = leftX;
-                            y = _selection.Top;
+                            var sideY = Math.Clamp(
+                                _selection.Top,
+                                edgeMargin,
+                                Math.Max(
+                                    edgeMargin,
+                                    RootGrid.ActualHeight - toolbarHeight - edgeMargin));
+                            Canvas.SetLeft(Toolbar, leftX);
+                            Canvas.SetTop(Toolbar, sideY);
                         }
                         else
                         {
-                            x = _selection.Left +
-                                (_selection.Width - toolbarWidth) / 2;
-                            y = _selection.Top +
+                            var centerY = _selection.Top +
                                 (_selection.Height - toolbarHeight) / 2;
+                            centerY = Math.Clamp(
+                                centerY,
+                                edgeMargin,
+                                Math.Max(
+                                    edgeMargin,
+                                    RootGrid.ActualHeight - toolbarHeight - edgeMargin));
+                            Canvas.SetLeft(Toolbar, x);
+                            Canvas.SetTop(Toolbar, centerY);
                         }
                     }
                 }
             }
-
-            var maxX = Math.Max(
-                edgeMargin,
-                RootGrid.ActualWidth - toolbarWidth - edgeMargin);
-            var maxY = Math.Max(
-                edgeMargin,
-                RootGrid.ActualHeight - toolbarHeight - edgeMargin);
-            x = Math.Clamp(x, edgeMargin, maxX);
-            y = Math.Clamp(y, edgeMargin, maxY);
-
-            Toolbar.Margin = new Thickness(x, y, 0, 0);
-            Toolbar.Visibility = Visibility.Visible;
-            Toolbar.IsHitTestVisible = true;
             Toolbar.UpdateLayout();
-
-            var finalToolbarRect = new System.Windows.Rect(
-                x,
-                y,
-                toolbarWidth,
-                toolbarHeight);
-            if (finalToolbarRect.Right > RootGrid.ActualWidth)
+            var toolbarTopLeft = Toolbar.PointToScreen(
+                new System.Windows.Point(0, 0));
+            var toolbarBottomRight = Toolbar.PointToScreen(
+                new System.Windows.Point(
+                    toolbarWidth,
+                    toolbarHeight));
+            try
             {
-                Toolbar.Margin = new Thickness(
-                    Math.Max(edgeMargin, RootGrid.ActualWidth - toolbarWidth - edgeMargin),
-                    y,
-                    0,
-                    0);
+                var logPath = System.IO.Path.Combine(
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.LocalApplicationData),
+                    "ScreenBoxDrawer",
+                    "toolbar-edge-debug.log");
+                Directory.CreateDirectory(
+                    System.IO.Path.GetDirectoryName(logPath)!);
+                File.AppendAllText(
+                    logPath,
+                    $"{DateTime.Now:HH:mm:ss.fff} " +
+                    $"selection={_selection.Left:F1},{_selection.Top:F1}," +
+                    $"{_selection.Width:F1}x{_selection.Height:F1} " +
+                    $"selectionPixels={_selectionPixels.X},{_selectionPixels.Y}," +
+                    $"{_selectionPixels.Width}x{_selectionPixels.Height} " +
+                    $"toolbar={Canvas.GetLeft(Toolbar):F1},{Canvas.GetTop(Toolbar):F1}," +
+                    $"{toolbarWidth:F1}x{toolbarHeight:F1} " +
+                    $"screenWorking={selectionMonitor.WorkingArea.Left}," +
+                    $"{selectionMonitor.WorkingArea.Top}," +
+                    $"{selectionMonitor.WorkingArea.Width}x" +
+                    $"{selectionMonitor.WorkingArea.Height}{Environment.NewLine}");
             }
-            if (finalToolbarRect.Bottom > RootGrid.ActualHeight)
+            catch
             {
-                Toolbar.Margin = new Thickness(
-                    Toolbar.Margin.Left,
-                    Math.Max(edgeMargin, RootGrid.ActualHeight - toolbarHeight - edgeMargin),
-                    0,
-                    0);
             }
             Toolbar.Visibility = Visibility.Visible;
-        }
-
-        private DrawingPoint GetSelectionCenterPixel()
-        {
-            var left = Math.Min(
-                _selectionPixels.Left,
-                _selectionPixels.Right);
-            var top = Math.Min(
-                _selectionPixels.Top,
-                _selectionPixels.Bottom);
-            var right = Math.Max(
-                _selectionPixels.Left,
-                _selectionPixels.Right);
-            var bottom = Math.Max(
-                _selectionPixels.Top,
-                _selectionPixels.Bottom);
-
-            return new DrawingPoint(
-                _screenBounds.Left + left + (right - left) / 2,
-                _screenBounds.Top + top + (bottom - top) / 2);
-        }
-
-        private static DrawingRectangle FindMonitorContaining(
-            DrawingPoint pixel)
-        {
-            var monitors = GetDisplayMonitorBounds();
-            foreach (var monitor in monitors)
-            {
-                if (monitor.Contains(pixel))
-                    return monitor;
-            }
-
-            DrawingRectangle nearest = CreateUnionBounds(monitors);
-            var nearestDistance = double.PositiveInfinity;
-            foreach (var monitor in monitors)
-            {
-                var centerX = monitor.Left + monitor.Width / 2.0;
-                var centerY = monitor.Top + monitor.Height / 2.0;
-                var dx = pixel.X - centerX;
-                var dy = pixel.Y - centerY;
-                var distance = dx * dx + dy * dy;
-                if (distance < nearestDistance)
-                {
-                    nearestDistance = distance;
-                    nearest = monitor;
-                }
-            }
-
-            return nearest;
-        }
-
-        private System.Windows.Rect ConvertMonitorRectToWindowDips(
-            DrawingRectangle monitor)
-        {
-            var left = (monitor.Left - _screenBounds.Left) *
-                RootGrid.ActualWidth / _imagePixelWidth;
-            var top = (monitor.Top - _screenBounds.Top) *
-                RootGrid.ActualHeight / _imagePixelHeight;
-            var right = (monitor.Right - _screenBounds.Left) *
-                RootGrid.ActualWidth / _imagePixelWidth;
-            var bottom = (monitor.Bottom - _screenBounds.Top) *
-                RootGrid.ActualHeight / _imagePixelHeight;
-            return new System.Windows.Rect(
-                new System.Windows.Point(left, top),
-                new System.Windows.Point(right, bottom));
+            Toolbar.UpdateLayout();
         }
 
         private System.Windows.Point ClampToWindow(System.Windows.Point point)

@@ -1,10 +1,12 @@
 using System.IO;
 using System.Globalization;
 using System.Windows;
+using System.Windows.Forms;
 using WpfKey = System.Windows.Input.Key;
 using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
 using WpfKeyboard = System.Windows.Input.Keyboard;
 using WpfModifierKeys = System.Windows.Input.ModifierKeys;
+using FormsFolderBrowserDialog = System.Windows.Forms.FolderBrowserDialog;
 
 namespace ScreenBoxDrawer
 {
@@ -35,6 +37,7 @@ namespace ScreenBoxDrawer
             BoxDisplaySecondsTextBox.Text = settings.BoxDisplaySeconds.ToString(CultureInfo.InvariantCulture);
             EffectsCheckBox.IsChecked = settings.EffectsEnabled;
             DirectGestureCheckBox.IsChecked = settings.DirectGestureEnabled;
+            CaptureSaveFolderTextBox.Text = settings.CaptureSaveFolder;
         }
 
         public AppSettings? SavedSettings { get; private set; }
@@ -104,6 +107,25 @@ namespace ScreenBoxDrawer
             _overlay.ClearBoxes();
         }
 
+        private void BrowseCaptureSaveFolder_Click(
+            object sender,
+            RoutedEventArgs e)
+        {
+            using var dialog = new FormsFolderBrowserDialog
+            {
+                Description = "Select the default folder for captured screenshots",
+                UseDescriptionForTitle = true,
+                SelectedPath = Directory.Exists(CaptureSaveFolderTextBox.Text)
+                    ? CaptureSaveFolderTextBox.Text
+                    : Environment.GetFolderPath(
+                        Environment.SpecialFolder.MyPictures),
+                ShowNewFolderButton = true
+            };
+
+            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                CaptureSaveFolderTextBox.Text = dialog.SelectedPath;
+        }
+
         private void Save_Click(object sender, RoutedEventArgs e)
         {
             if (!int.TryParse(
@@ -131,6 +153,15 @@ namespace ScreenBoxDrawer
                 return;
             }
 
+            var captureSaveFolder = CaptureSaveFolderTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(captureSaveFolder) ||
+                !Path.IsPathFullyQualified(captureSaveFolder))
+            {
+                ErrorTextBlock.Text =
+                    "Capture save folder must be a valid absolute folder path.";
+                return;
+            }
+
             var candidate = new AppSettings
             {
                 DrawHotkey = _drawHotkey.Clone(),
@@ -140,7 +171,8 @@ namespace ScreenBoxDrawer
                 MaximumVisibleBoxes = maximumBoxes,
                 BoxDisplaySeconds = boxDisplaySeconds,
                 EffectsEnabled = EffectsCheckBox.IsChecked == true,
-                DirectGestureEnabled = DirectGestureCheckBox.IsChecked == true
+                DirectGestureEnabled = DirectGestureCheckBox.IsChecked == true,
+                CaptureSaveFolder = captureSaveFolder
             };
             var validationError = candidate.Validate();
             if (validationError != null)

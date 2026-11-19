@@ -38,6 +38,9 @@ namespace ScreenBoxDrawer
         public double BoxDisplaySeconds { get; set; } = 1.5;
         public bool EffectsEnabled { get; set; } = true;
         public bool DirectGestureEnabled { get; set; } = true;
+        public string CaptureSaveFolder { get; set; } =
+            Environment.GetFolderPath(
+                Environment.SpecialFolder.MyPictures);
 
         public AppSettings Clone()
         {
@@ -50,12 +53,20 @@ namespace ScreenBoxDrawer
                 MaximumVisibleBoxes = MaximumVisibleBoxes,
                 BoxDisplaySeconds = BoxDisplaySeconds,
                 EffectsEnabled = EffectsEnabled,
-                DirectGestureEnabled = DirectGestureEnabled
+                DirectGestureEnabled = DirectGestureEnabled,
+                CaptureSaveFolder = CaptureSaveFolder
             };
         }
 
         public string? Validate()
         {
+            if (string.IsNullOrWhiteSpace(CaptureSaveFolder))
+            {
+                CaptureSaveFolder =
+                    Environment.GetFolderPath(
+                        Environment.SpecialFolder.MyPictures);
+            }
+
             if (MaximumVisibleBoxes < 1 || MaximumVisibleBoxes > 100)
                 return "Maximum visible boxes must be between 1 and 100.";
 

@@ -20,6 +20,8 @@ foreground.
 - Choose drawing thickness and text font size from the capture toolbar.
 - Choose markup colors from the capture toolbar.
 - Copy an annotated capture to the clipboard.
+- Save annotated captures to a configured folder.
+- Choose a different save location with Save As.
 - Display multiple drawings at the same time.
 - Automatically remove drawings after a configurable duration.
 - Keep drawings until they are cleared by setting the duration to `0`.

@@ -125,7 +125,7 @@ namespace ScreenBoxDrawer
                 _overlay.SetCaptureModeActive(true);
                 try
                 {
-                    var captureWindow = new CaptureWindow();
+                    var captureWindow = new CaptureWindow(_settings);
                     captureWindow.Closed += CaptureWindow_Closed;
                     _captureWindow = captureWindow;
                     captureWindow.Show();

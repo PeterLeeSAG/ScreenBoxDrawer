@@ -15,6 +15,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Margin="0,0,0,20">
@@ -87,18 +88,37 @@
             </Grid>
         </GroupBox>
 
-        <CheckBox x:Name="EffectsCheckBox" Grid.Row="3"
+        <GroupBox Grid.Row="3" Header="Capture saves" Padding="12" Margin="0,0,0,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="CaptureSaveFolderTextBox"
+                         IsReadOnly="True"
+                         Padding="6"
+                         VerticalAlignment="Center"
+                         Margin="0,0,8,0"/>
+                <Button Grid.Column="1"
+                        Content="Browse..."
+                        MinWidth="84"
+                        Padding="12,6"
+                        Click="BrowseCaptureSaveFolder_Click"/>
+            </Grid>
+        </GroupBox>
+
+        <CheckBox x:Name="EffectsCheckBox" Grid.Row="4"
                   Content="Enable dashed and moving effects"
                   Margin="2,0,0,14"/>
 
-        <StackPanel Grid.Row="4" Margin="0,0,0,12">
+        <StackPanel Grid.Row="5" Margin="0,0,0,12">
             <Button Content="Clear all boxes now" HorizontalAlignment="Left"
                     Padding="12,6" Click="ClearBoxes_Click"/>
             <TextBlock Text="Ctrl+Shift+drag also remains available for drawing."
                        Foreground="#666666" FontSize="12" Margin="0,8,0,0"/>
         </StackPanel>
 
-        <Grid Grid.Row="5">
+        <Grid Grid.Row="6">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>

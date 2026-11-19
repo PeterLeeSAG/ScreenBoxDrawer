@@ -38,6 +38,9 @@ support, demonstrations, and screen recordings.
 7. **Copy** or the app-image icon places the selected image and its markup on
    the clipboard. The green check copies and closes capture mode. **Close**
    exits capture mode without changing the desktop.
+8. **Save** writes the annotated capture to the configured capture save folder.
+   **Save As** opens the Windows file browser so a name and location can be
+   chosen. The save folder is configured in the Settings window.
 
 Press **Escape** at any time to cancel capture mode and discard the current
 selection and markup.
