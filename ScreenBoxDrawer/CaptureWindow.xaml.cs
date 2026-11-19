@@ -54,25 +54,10 @@ namespace ScreenBoxDrawer
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             new WindowInteropHelper(this).EnsureHandle();
-            var source = PresentationSource.FromVisual(this);
-            if (source?.CompositionTarget != null)
-            {
-                var topLeft = source.CompositionTarget.TransformFromDevice.Transform(
-                    new System.Windows.Point(_screenBounds.Left, _screenBounds.Top));
-                var bottomRight = source.CompositionTarget.TransformFromDevice.Transform(
-                    new System.Windows.Point(_screenBounds.Right, _screenBounds.Bottom));
-                Left = topLeft.X;
-                Top = topLeft.Y;
-                Width = bottomRight.X - topLeft.X;
-                Height = bottomRight.Y - topLeft.Y;
-            }
-            else
-            {
-                Left = SystemParameters.VirtualScreenLeft;
-                Top = SystemParameters.VirtualScreenTop;
-                Width = SystemParameters.VirtualScreenWidth;
-                Height = SystemParameters.VirtualScreenHeight;
-            }
+            Left = SystemParameters.VirtualScreenLeft;
+            Top = SystemParameters.VirtualScreenTop;
+            Width = SystemParameters.VirtualScreenWidth;
+            Height = SystemParameters.VirtualScreenHeight;
 
             UpdateLayout();
             Activate();
@@ -96,16 +81,15 @@ namespace ScreenBoxDrawer
 
             if (_phase == CapturePhase.Select)
             {
+                _dragStart = ClampToWindow(e.GetPosition(RootGrid));
                 _dragStartPixel = GetCursorPosition();
-                _dragStart = ClampToWindow(ConvertScreenPixelsToWindowDips(_dragStartPixel));
                 _isSelecting = true;
                 RootGrid.CaptureMouse();
                 UpdateSelectionVisual(CreateBounds(_dragStart, _dragStart));
             }
             else if (_markupTool != CaptureMarkupTool.None)
             {
-                _dragStart = ClampToSelection(
-                    ConvertScreenPixelsToWindowDips(GetCursorPosition()));
+                _dragStart = ClampToSelection(e.GetPosition(RootGrid));
                 _isMarking = true;
                 _activeMarkup = CreateMarkup(_dragStart);
                 MarkupCanvas.Children.Add(_activeMarkup);
@@ -119,17 +103,16 @@ namespace ScreenBoxDrawer
         {
             if (_isSelecting)
             {
-                var currentPixel = GetCursorPosition();
                 UpdateSelectionVisual(CreateBounds(
                     _dragStart,
-                    ClampToWindow(ConvertScreenPixelsToWindowDips(currentPixel))));
+                    ClampToWindow(e.GetPosition(RootGrid))));
             }
             else if (_isMarking && _activeMarkup != null)
             {
                 UpdateMarkup(
                     _activeMarkup,
                     _dragStart,
-                    ClampToSelection(ConvertScreenPixelsToWindowDips(GetCursorPosition())));
+                    ClampToSelection(e.GetPosition(RootGrid)));
             }
         }
 
@@ -139,19 +122,19 @@ namespace ScreenBoxDrawer
             {
                 _isSelecting = false;
                 RootGrid.ReleaseMouseCapture();
-                var currentPixel = GetCursorPosition();
                 UpdateSelectionVisual(CreateBounds(
                     _dragStart,
-                    ClampToWindow(ConvertScreenPixelsToWindowDips(currentPixel))));
-                _selectionPixels = CreateSourcePixelBounds(_dragStartPixel, currentPixel);
+                    ClampToWindow(e.GetPosition(RootGrid))));
+                _selectionPixels = CreateSourcePixelBounds(
+                    _dragStartPixel,
+                    GetCursorPosition());
                 CompleteSelection();
             }
             else if (_isMarking && _activeMarkup != null)
             {
                 _isMarking = false;
                 RootGrid.ReleaseMouseCapture();
-                var end = ClampToSelection(
-                    ConvertScreenPixelsToWindowDips(GetCursorPosition()));
+                var end = ClampToSelection(e.GetPosition(RootGrid));
                 UpdateMarkup(_activeMarkup, _dragStart, end);
                 if (IsDegenerateMarkup(_activeMarkup))
                     MarkupCanvas.Children.Remove(_activeMarkup);
@@ -413,42 +396,30 @@ namespace ScreenBoxDrawer
             var x = _selection.Left + (_selection.Width - toolbarWidth) / 2;
             var y = _selection.Bottom + gap;
 
-            var selectionCenter = new DrawingPoint(
-                _selectionPixels.X + _selectionPixels.Width / 2,
-                _selectionPixels.Y + _selectionPixels.Height / 2);
-            var monitor = FindMonitorContaining(selectionCenter);
-            var monitorTopLeft = ConvertScreenPixelsToWindowDips(
-                new DrawingPoint(monitor.Left, monitor.Top));
-            var monitorBottomRight = ConvertScreenPixelsToWindowDips(
-                new DrawingPoint(monitor.Right, monitor.Bottom));
-            var monitorBounds = new System.Windows.Rect(
-                monitorTopLeft,
-                monitorBottomRight);
-
-            if (y + toolbarHeight > monitorBounds.Bottom - edgeMargin)
+            if (y + toolbarHeight > RootGrid.ActualHeight - edgeMargin)
                 y = _selection.Top - toolbarHeight - gap;
 
-            if (y < monitorBounds.Top + edgeMargin)
+            if (y < edgeMargin)
             {
                 x = _selection.Right + gap;
                 y = _selection.Top;
-                if (x + toolbarWidth > monitorBounds.Right - edgeMargin)
+                if (x + toolbarWidth > RootGrid.ActualWidth - edgeMargin)
                     x = _selection.Left - toolbarWidth - gap;
             }
 
             var maxX = Math.Max(
-                monitorBounds.Left + edgeMargin,
-                monitorBounds.Right - toolbarWidth - edgeMargin);
+                edgeMargin,
+                RootGrid.ActualWidth - toolbarWidth - edgeMargin);
             var maxY = Math.Max(
-                monitorBounds.Top + edgeMargin,
-                monitorBounds.Bottom - toolbarHeight - edgeMargin);
+                edgeMargin,
+                RootGrid.ActualHeight - toolbarHeight - edgeMargin);
             x = Math.Clamp(
                 x,
-                monitorBounds.Left + edgeMargin,
+                edgeMargin,
                 maxX);
             y = Math.Clamp(
                 y,
-                monitorBounds.Top + edgeMargin,
+                edgeMargin,
                 maxY);
             Toolbar.Margin = new Thickness(x, y, 0, 0);
         }
@@ -496,46 +467,15 @@ namespace ScreenBoxDrawer
                 return point;
 
             var fallback = Mouse.GetPosition(RootGrid);
-            var absolute = ConvertWindowDipsToScreenPixels(fallback);
-            return new DrawingPoint(absolute.X, absolute.Y);
-        }
-
-        private System.Windows.Point ConvertScreenPixelsToWindowDips(
-            DrawingPoint screenPixelPoint)
-        {
-            var source = PresentationSource.FromVisual(RootGrid);
-            if (source?.CompositionTarget != null)
-            {
-                var dipAbsolute = source.CompositionTarget.TransformFromDevice.Transform(
-                    new System.Windows.Point(screenPixelPoint.X, screenPixelPoint.Y));
-                return new System.Windows.Point(
-                    dipAbsolute.X - Left,
-                    dipAbsolute.Y - Top);
-            }
-
-            var dpi = VisualTreeHelper.GetDpi(RootGrid);
-            return new System.Windows.Point(
-                screenPixelPoint.X / dpi.DpiScaleX - Left,
-                screenPixelPoint.Y / dpi.DpiScaleY - Top);
-        }
-
-        private DrawingPoint ConvertWindowDipsToScreenPixels(
-            System.Windows.Point windowPoint)
-        {
-            var source = PresentationSource.FromVisual(RootGrid);
-            if (source?.CompositionTarget != null)
-            {
-                var deviceAbsolute = source.CompositionTarget.TransformToDevice.Transform(
-                    new System.Windows.Point(Left + windowPoint.X, Top + windowPoint.Y));
-                return new DrawingPoint(
-                    (int)Math.Round(deviceAbsolute.X),
-                    (int)Math.Round(deviceAbsolute.Y));
-            }
-
-            var dpi = VisualTreeHelper.GetDpi(RootGrid);
+            var rootWidth = Math.Max(RootGrid.ActualWidth, 1);
+            var rootHeight = Math.Max(RootGrid.ActualHeight, 1);
             return new DrawingPoint(
-                (int)Math.Round((Left + windowPoint.X) * dpi.DpiScaleX),
-                (int)Math.Round((Top + windowPoint.Y) * dpi.DpiScaleY));
+                (int)Math.Round(
+                    _screenBounds.Left +
+                    fallback.X * _imagePixelWidth / rootWidth),
+                (int)Math.Round(
+                    _screenBounds.Top +
+                    fallback.Y * _imagePixelHeight / rootHeight));
         }
 
         private static System.Windows.Rect CreateBounds(
@@ -648,34 +588,6 @@ namespace ScreenBoxDrawer
                     NativeMethods.GetSystemMetrics(NativeMethods.SM_CXVIRTUALSCREEN),
                 NativeMethods.GetSystemMetrics(NativeMethods.SM_YVIRTUALSCREEN) +
                     NativeMethods.GetSystemMetrics(NativeMethods.SM_CYVIRTUALSCREEN));
-        }
-
-        private static DrawingRectangle FindMonitorContaining(DrawingPoint point)
-        {
-            var monitors = GetDisplayMonitorBounds();
-            foreach (var monitor in monitors)
-            {
-                if (monitor.Contains(point))
-                    return monitor;
-            }
-
-            DrawingRectangle? nearest = null;
-            var nearestDistance = double.PositiveInfinity;
-            foreach (var monitor in monitors)
-            {
-                var centerX = monitor.Left + monitor.Width / 2.0;
-                var centerY = monitor.Top + monitor.Height / 2.0;
-                var dx = point.X - centerX;
-                var dy = point.Y - centerY;
-                var distance = dx * dx + dy * dy;
-                if (distance < nearestDistance)
-                {
-                    nearestDistance = distance;
-                    nearest = monitor;
-                }
-            }
-
-            return nearest ?? GetVirtualScreenBoundsFallback();
         }
 
         private enum CapturePhase

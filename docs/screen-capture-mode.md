@@ -46,15 +46,20 @@ arrow, and clear shortcuts and must contain at least one modifier key.
 - The capture uses the complete Windows virtual desktop, including monitors
   with negative screen coordinates. Selection cropping is calculated in
   physical screen pixels so a rectangle can cross monitor boundaries.
-- Capture geometry uses two explicit coordinate systems: Win32 physical
-  screen pixels for the desktop snapshot and WPF device-independent pixels
-  for the overlay, selection border, markup canvas, and toolbar.
-- Pointer positions are converted through WPF's presentation source transform
-  instead of a single desktop-wide physical-to-DIP scale. This prevents the
-  selection from moving on DPI-aware, mixed-DPI monitor layouts.
-- The toolbar is centered over the selection and constrained to the monitor
-  containing that selection. It still tries below first, then above, then left
-  or right, before applying an edge margin.
+- Capture geometry uses separate WPF and bitmap coordinate systems. WPF
+  device-independent pixels position the overlay, selection border, markup
+  canvas, and toolbar. The selected image and red selection border are direct
+  children of an absolute `Canvas`, so `Canvas.SetLeft` and `Canvas.SetTop`
+  place them at the drag location instead of in the Grid center.
+- The crop rectangle is calculated from Win32 physical cursor positions and
+  the captured virtual-desktop origin. It is not mapped through WPF mouse
+  DPI or a desktop-wide scaling transform.
+- Selection and markup positions come directly from WPF mouse
+  `GetPosition(RootGrid)` events. This prevents a desktop-wide DPI transform
+  from moving the selected area toward a monitor center.
+- The toolbar is centered over the selection and constrained to the virtual
+  desktop root. It tries below first, then above, then left or right, before
+  applying an edge margin.
 - The existing box and arrow drawing overlay is suspended while capture mode
   is active.
 - Escape, Close, and the capture shortcut restore the normal click-through
