@@ -69,6 +69,9 @@ namespace ScreenBoxDrawer
                     int msg = wParam.ToInt32();
                     var ms = Marshal.PtrToStructure<NativeMethodsLowLevel.MSLLHOOKSTRUCT>(lParam);
 
+                    if (_mainWindow.CaptureModeActive)
+                        return NativeMethodsLowLevel.CallNextHookEx(_hookId, nCode, wParam, lParam);
+
                     if (msg == WM_LBUTTONDOWN)
                     {
                         if (_isDrawing)

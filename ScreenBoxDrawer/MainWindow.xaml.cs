@@ -26,6 +26,7 @@ namespace ScreenBoxDrawer
         private const int DrawHotkeyId = 1;
         private const int ArrowHotkeyId = 2;
         private const int ClearHotkeyId = 3;
+        private const int CaptureHotkeyId = 4;
 
         private readonly Random _random;
         private readonly List<DrawBox> _boxes = new();
@@ -38,8 +39,10 @@ namespace ScreenBoxDrawer
         private bool _hasMoved;
         private DrawingTool _armedTool;
         private bool _hotkeysRegistered;
+        private bool _captureModeActive;
 
         public event EventHandler? ClearRequested;
+        public event EventHandler? CaptureRequested;
 
         public MainWindow(AppSettings settings)
         {
@@ -49,6 +52,23 @@ namespace ScreenBoxDrawer
         }
 
         public bool IsDrawingArmed => _armedTool != DrawingTool.None;
+        public bool CaptureModeActive => _captureModeActive;
+
+        public void SetCaptureModeActive(bool active)
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.Invoke(() => SetCaptureModeActive(active));
+                return;
+            }
+
+            _captureModeActive = active;
+            if (active)
+            {
+                _armedTool = DrawingTool.None;
+                ClearRequested?.Invoke(this, EventArgs.Empty);
+            }
+        }
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
@@ -122,7 +142,7 @@ namespace ScreenBoxDrawer
                 return;
             }
 
-            if (!_isDrawing)
+            if (!_isDrawing && !_captureModeActive)
                 _armedTool = DrawingTool.Box;
         }
 
@@ -134,7 +154,7 @@ namespace ScreenBoxDrawer
                 return;
             }
 
-            if (!_isDrawing)
+            if (!_isDrawing && !_captureModeActive)
                 _armedTool = DrawingTool.Arrow;
         }
 
@@ -178,7 +198,7 @@ namespace ScreenBoxDrawer
 
         private bool BeginDrawCore(System.Drawing.Point startScreen)
         {
-            if (_isDrawing)
+            if (_isDrawing || _captureModeActive)
                 return false;
 
             if (_boxes.Count == 0 && RootCanvas.Children.Count > 0)
@@ -315,6 +335,8 @@ namespace ScreenBoxDrawer
                     ArmArrow();
                 else if (wParam.ToInt32() == ClearHotkeyId)
                     ClearBoxes();
+                else if (wParam.ToInt32() == CaptureHotkeyId)
+                    CaptureRequested?.Invoke(this, EventArgs.Empty);
 
                 handled = true;
             }
@@ -358,7 +380,8 @@ namespace ScreenBoxDrawer
         {
             if (RegisterHotkey(DrawHotkeyId, settings.DrawHotkey, out error) &&
                 RegisterHotkey(ArrowHotkeyId, settings.ArrowHotkey, out error) &&
-                RegisterHotkey(ClearHotkeyId, settings.ClearHotkey, out error))
+                RegisterHotkey(ClearHotkeyId, settings.ClearHotkey, out error) &&
+                RegisterHotkey(CaptureHotkeyId, settings.CaptureHotkey, out error))
             {
                 error = string.Empty;
                 return true;
@@ -376,6 +399,7 @@ namespace ScreenBoxDrawer
             NativeMethods.UnregisterHotKey(_windowHandle, DrawHotkeyId);
             NativeMethods.UnregisterHotKey(_windowHandle, ArrowHotkeyId);
             NativeMethods.UnregisterHotKey(_windowHandle, ClearHotkeyId);
+            NativeMethods.UnregisterHotKey(_windowHandle, CaptureHotkeyId);
         }
 
         private bool RegisterHotkey(int id, HotkeySettings shortcut, out string error)
@@ -648,6 +672,16 @@ namespace ScreenBoxDrawer
     internal static class NativeMethods
     {
         public const int WS_EX_TOOLWINDOW = 0x00000080;
+        public const int SM_XVIRTUALSCREEN = 76;
+        public const int SM_YVIRTUALSCREEN = 77;
+        public const int SM_CXVIRTUALSCREEN = 78;
+        public const int SM_CYVIRTUALSCREEN = 79;
+
+        public delegate bool MonitorEnumDelegate(
+            IntPtr monitor,
+            IntPtr deviceContext,
+            IntPtr monitorRect,
+            IntPtr userData);
 
         [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
         public static extern int GetWindowLong(IntPtr hWnd, int index);
@@ -676,5 +710,21 @@ namespace ScreenBoxDrawer
 
         [DllImport("user32.dll", SetLastError = true)]
         public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        [DllImport("user32.dll")]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        public static extern bool GetCursorPos(out System.Drawing.Point point);
+
+        [DllImport("user32.dll")]
+        public static extern bool EnumDisplayMonitors(
+            IntPtr deviceContext,
+            IntPtr clippingRectangle,
+            MonitorEnumDelegate callback,
+            IntPtr userData);
+
+        [DllImport("user32.dll")]
+        public static extern int GetSystemMetrics(int index);
     }
 }

@@ -27,6 +27,13 @@ namespace ScreenBoxDrawer
             Key = "X"
         };
 
+        public HotkeySettings CaptureHotkey { get; set; } = new()
+        {
+            Control = true,
+            Shift = true,
+            Key = "S"
+        };
+
         public int MaximumVisibleBoxes { get; set; } = 10;
         public double BoxDisplaySeconds { get; set; } = 1.5;
         public bool EffectsEnabled { get; set; } = true;
@@ -39,6 +46,7 @@ namespace ScreenBoxDrawer
                 DrawHotkey = DrawHotkey.Clone(),
                 ArrowHotkey = ArrowHotkey.Clone(),
                 ClearHotkey = ClearHotkey.Clone(),
+                CaptureHotkey = CaptureHotkey.Clone(),
                 MaximumVisibleBoxes = MaximumVisibleBoxes,
                 BoxDisplaySeconds = BoxDisplaySeconds,
                 EffectsEnabled = EffectsEnabled,
@@ -58,8 +66,11 @@ namespace ScreenBoxDrawer
                 return "Box display duration must be zero or a finite nonnegative number of seconds.";
             }
 
-            if (DrawHotkey == null || ArrowHotkey == null || ClearHotkey == null)
-                return "Draw, arrow, and clear shortcuts must all be configured.";
+            if (DrawHotkey == null || ArrowHotkey == null ||
+                ClearHotkey == null || CaptureHotkey == null)
+            {
+                return "Draw, arrow, clear, and capture shortcuts must all be configured.";
+            }
 
             if (!DrawHotkey.IsValid)
                 return "The box shortcut must include a key and at least one modifier.";
@@ -70,11 +81,17 @@ namespace ScreenBoxDrawer
             if (!ClearHotkey.IsValid)
                 return "The clear shortcut must include a key and at least one modifier.";
 
+            if (!CaptureHotkey.IsValid)
+                return "The capture shortcut must include a key and at least one modifier.";
+
             if (DrawHotkey.Matches(ArrowHotkey) ||
                 DrawHotkey.Matches(ClearHotkey) ||
-                ArrowHotkey.Matches(ClearHotkey))
+                DrawHotkey.Matches(CaptureHotkey) ||
+                ArrowHotkey.Matches(ClearHotkey) ||
+                ArrowHotkey.Matches(CaptureHotkey) ||
+                ClearHotkey.Matches(CaptureHotkey))
             {
-                return "The box, arrow, and clear shortcuts must be different.";
+                return "The box, arrow, clear, and capture shortcuts must be different.";
             }
 
             return null;

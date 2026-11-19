@@ -14,6 +14,7 @@ namespace ScreenBoxDrawer
         private Forms.NotifyIcon? _notifyIcon;
         private Forms.ContextMenuStrip? _trayMenu;
         private System.Drawing.Icon? _trayIcon;
+        private CaptureWindow? _captureWindow;
         private AppSettings _settings = new();
 
         private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new(-4);
@@ -55,6 +56,7 @@ namespace ScreenBoxDrawer
             _overlay = new MainWindow(_settings);
             MainWindow = _overlay;
             _overlay.ClearRequested += (_, _) => _mouseHook?.CancelDrawing();
+            _overlay.CaptureRequested += (_, _) => ToggleCaptureMode();
             _overlay.Show();
 
             _mouseHook = new LowLevelMouseHook(_overlay);
@@ -72,6 +74,7 @@ namespace ScreenBoxDrawer
 
         protected override void OnExit(ExitEventArgs e)
         {
+            _captureWindow?.Close();
             _mouseHook?.Stop();
             if (_notifyIcon != null)
             {
@@ -87,6 +90,7 @@ namespace ScreenBoxDrawer
         {
             _trayMenu = new Forms.ContextMenuStrip();
             _trayMenu.Items.Add("Settings...", null, (_, _) => OpenSettings());
+            _trayMenu.Items.Add("Capture screen", null, (_, _) => ToggleCaptureMode());
             _trayMenu.Items.Add("Clear all boxes", null, (_, _) =>
                 Dispatcher.BeginInvoke(new Action(() => _overlay?.ClearBoxes())));
             _trayMenu.Items.Add(new Forms.ToolStripSeparator());
@@ -103,6 +107,50 @@ namespace ScreenBoxDrawer
                 Visible = true
             };
             _notifyIcon.DoubleClick += (_, _) => OpenSettings();
+        }
+
+        private void ToggleCaptureMode()
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_captureWindow != null)
+                {
+                    _captureWindow.Close();
+                    return;
+                }
+
+                if (_overlay == null)
+                    return;
+
+                _overlay.SetCaptureModeActive(true);
+                try
+                {
+                    var captureWindow = new CaptureWindow();
+                    captureWindow.Closed += CaptureWindow_Closed;
+                    _captureWindow = captureWindow;
+                    captureWindow.Show();
+                }
+                catch (Exception ex) when (
+                    ex is ArgumentException ||
+                    ex is ExternalException ||
+                    ex is InvalidOperationException)
+                {
+                    _overlay.SetCaptureModeActive(false);
+                    System.Windows.MessageBox.Show(
+                        $"The screen could not be captured.\n\n{ex.Message}",
+                        "ScreenBoxDrawer",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Warning);
+                }
+            }));
+        }
+
+        private void CaptureWindow_Closed(object? sender, EventArgs e)
+        {
+            if (ReferenceEquals(sender, _captureWindow))
+                _captureWindow = null;
+
+            _overlay?.SetCaptureModeActive(false);
         }
 
         private void OpenSettings()

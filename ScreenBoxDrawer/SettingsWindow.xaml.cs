@@ -15,6 +15,7 @@ namespace ScreenBoxDrawer
         private HotkeySettings _drawHotkey;
         private HotkeySettings _arrowHotkey;
         private HotkeySettings _clearHotkey;
+        private HotkeySettings _captureHotkey;
 
         public SettingsWindow(AppSettings settings, MainWindow overlay)
         {
@@ -24,10 +25,12 @@ namespace ScreenBoxDrawer
             _drawHotkey = settings.DrawHotkey.Clone();
             _arrowHotkey = settings.ArrowHotkey.Clone();
             _clearHotkey = settings.ClearHotkey.Clone();
+            _captureHotkey = settings.CaptureHotkey.Clone();
 
             DrawHotkeyBox.Text = _drawHotkey.ToDisplayString();
             ArrowHotkeyBox.Text = _arrowHotkey.ToDisplayString();
             ClearHotkeyBox.Text = _clearHotkey.ToDisplayString();
+            CaptureHotkeyBox.Text = _captureHotkey.ToDisplayString();
             MaximumBoxesTextBox.Text = settings.MaximumVisibleBoxes.ToString(CultureInfo.InvariantCulture);
             BoxDisplaySecondsTextBox.Text = settings.BoxDisplaySeconds.ToString(CultureInfo.InvariantCulture);
             EffectsCheckBox.IsChecked = settings.EffectsEnabled;
@@ -58,6 +61,21 @@ namespace ScreenBoxDrawer
             {
                 _clearHotkey = shortcut;
                 ClearHotkeyBox.Text = shortcut.ToDisplayString();
+                ErrorTextBlock.Text = string.Empty;
+            }
+            else
+            {
+                ErrorTextBlock.Text = "Use a shortcut with at least one modifier (Ctrl, Alt, Shift, or Win).";
+            }
+        }
+
+        private void CaptureHotkeyBox_PreviewKeyDown(object sender, WpfKeyEventArgs e)
+        {
+            e.Handled = true;
+            if (TryCaptureShortcut(e, out var shortcut))
+            {
+                _captureHotkey = shortcut;
+                CaptureHotkeyBox.Text = shortcut.ToDisplayString();
                 ErrorTextBlock.Text = string.Empty;
             }
             else
@@ -118,6 +136,7 @@ namespace ScreenBoxDrawer
                 DrawHotkey = _drawHotkey.Clone(),
                 ArrowHotkey = _arrowHotkey.Clone(),
                 ClearHotkey = _clearHotkey.Clone(),
+                CaptureHotkey = _captureHotkey.Clone(),
                 MaximumVisibleBoxes = maximumBoxes,
                 BoxDisplaySeconds = boxDisplaySeconds,
                 EffectsEnabled = EffectsCheckBox.IsChecked == true,

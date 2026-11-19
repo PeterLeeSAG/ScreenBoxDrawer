@@ -13,6 +13,9 @@ foreground.
 
 - Draw rounded boxes over the desktop.
 - Draw arrows from a tail point to a tip point.
+- Capture and freeze a rectangular area of the virtual desktop.
+- Annotate a frozen capture with lines, boxes, and circles.
+- Copy an annotated capture to the clipboard.
 - Display multiple drawings at the same time.
 - Automatically remove drawings after a configurable duration.
 - Keep drawings until they are cleared by setting the duration to `0`.
@@ -53,6 +56,7 @@ notification area.
 | Draw a box | `Ctrl+Shift+D` | Arms the box tool for the next left-button drag. |
 | Draw an arrow | `Ctrl+Shift+A` | Arms the arrow tool for the next left-button drag. |
 | Clear all drawings | `Ctrl+Shift+X` | Removes every visible box and arrow. |
+| Capture screen | `Ctrl+Shift+S` | Opens a dimmed virtual-desktop capture mode. |
 | Direct drawing | `Ctrl+Shift+drag` | Draws a box without first pressing the box shortcut. |
 
 After pressing a drawing shortcut, hold the left mouse button and drag across
@@ -62,15 +66,27 @@ movement is discarded.
 The direct `Ctrl+Shift+drag` gesture is enabled by default and can be disabled
 in **Settings**.
 
+### Capture screen
+
+Press the capture shortcut, then hold the left mouse button and drag a
+rectangle around the area to freeze. The selected area remains as a still image
+while the rest of the virtual desktop stays dimmed. A toolbar appears around
+the selection, below it when there is room and above or beside it when the
+selection is near an edge.
+
+Choose **Line**, **Box**, or **Circle**, drag inside the frozen image, and use
+**Copy** to place the annotated capture on the clipboard. Press **Escape** or
+choose **Close** to leave capture mode.
+
 ## Configure the application
 
 Right-click the notification-area icon and choose **Settings...**. The
 settings panel provides:
 
 - **Shortcuts** - Capture new combinations for drawing boxes, drawing arrows,
-  and clearing all drawings. Each shortcut must include at least one modifier
-  key (`Ctrl`, `Alt`, `Shift`, or `Win`), and the three shortcuts must be
-  different.
+  clearing all drawings, and capture mode. Each shortcut must include at least
+  one modifier key (`Ctrl`, `Alt`, `Shift`, or `Win`), and the four shortcuts
+  must be different.
 - **Maximum visible boxes** - Choose from 1 to 100 visible drawings. Boxes and
   arrows share this limit. When a new drawing would exceed the limit, the
   oldest drawing is removed first.
